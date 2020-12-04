@@ -1,9 +1,7 @@
 package registry
 
-import (
-)
+import ()
 
 type RegistryHandler interface {
-  GetModuleBazel(name string, version string, registry string) ([]byte, error)
+	GetModuleBazel(name string, version string, registry string) ([]byte, error)
 }
-

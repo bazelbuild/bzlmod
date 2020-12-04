@@ -1,9 +1,7 @@
 package resolve
 
-import (
-)
+import ()
 
 func Resolve() {
-  //Discovery()
+	//Discovery()
 }
-
