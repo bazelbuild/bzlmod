@@ -7,35 +7,69 @@ import (
 	"testing"
 )
 
-type myReg struct{}
+type myReg struct {
+	moduleBazel map[ModuleKey][]byte
+}
+
+func (r *myReg) addModuleBazel(name string, version string, moduleBazel string) error {
+	if r.moduleBazel == nil {
+		r.moduleBazel = make(map[ModuleKey][]byte)
+	}
+	if _, exists := r.moduleBazel[ModuleKey{name, version}]; exists {
+		return fmt.Errorf("entry already exists for %v@%v", name, version)
+	}
+	r.moduleBazel[ModuleKey{name, version}] = []byte(moduleBazel)
+	return nil
+}
 
 func (r *myReg) GetModuleBazel(name string, version string, registry string) ([]byte, error) {
-	if name == "B" && version == "1.0" {
-		return []byte(`module(name="B", version="1.0"); bazel_dep(name="D", version="0.1")`), nil
-	} else if name == "C" && version == "2.0" {
-		return []byte(`module(name="C", version="2.0"); bazel_dep(name="D", version="0.1")`), nil
-	} else if name == "D" && version == "0.1" {
-		return []byte(`module(name="D", version="0.1")`), nil
+	moduleBazel, exists := r.moduleBazel[ModuleKey{name, version}]
+	if exists {
+		return moduleBazel, nil
 	}
-	return nil, fmt.Errorf("bad key: name = %v, version = %v", name, version)
+	return nil, fmt.Errorf("no such module: %v@%v", name, version)
+}
+
+func writeLocalModuleBazel(t *testing.T, dir string, moduleBazel string) {
+	if err := ioutil.WriteFile(filepath.Join(dir, "MODULE.bazel"), []byte(moduleBazel), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSimpleDiamond(t *testing.T) {
 	wsDir := t.TempDir()
-	moduleBazel := []byte(`
+	writeLocalModuleBazel(t, wsDir, `
 module(name="A")
 bazel_dep(name="B", version="1.0")
 bazel_dep(name="C", version="2.0")
 `)
-	if err := ioutil.WriteFile(filepath.Join(wsDir, "MODULE.bazel"), moduleBazel, 0644); err != nil {
+	var err error
+	reg := &myReg{}
+	err = reg.addModuleBazel("B", "1.0", `
+module(name="B", version="1.0")
+bazel_dep(name="D", version="0.1")
+`)
+	if err != nil {
 		t.Fatal(err)
 	}
-	reg := &myReg{}
+	err = reg.addModuleBazel("C", "2.0", `
+module(name="C", version="2.0")
+bazel_dep(name="D", version="0.1")
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = reg.addModuleBazel("D", "0.1", `
+module(name="D", version="0.1")
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var v DiscoveryResult
-	var err error
 	if v, err = Discovery(wsDir, reg); err != nil {
 		t.Fatal(err)
 	}
-	t.Log(len(v.DepGraph))
+	t.Logf("%v", v)
 	t.Log("all good")
 }

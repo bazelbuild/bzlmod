@@ -1,10 +1,19 @@
 package resolve
 
-import ()
+import (
+	"fmt"
+)
 
 type ModuleKey struct {
 	Name    string
 	Version string // empty for modules with LocalPath/Url/Git overrides
+}
+
+func (k ModuleKey) String() string {
+	if k.Version == "" {
+		return fmt.Sprintf("%v@_", k.Name)
+	}
+	return fmt.Sprintf("%v@%v", k.Name, k.Version)
 }
 
 type FetchInfo interface {

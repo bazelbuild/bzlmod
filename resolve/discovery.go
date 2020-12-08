@@ -152,39 +152,49 @@ var (
 	overrideDepBuiltin = starlark.NewBuiltin("override_dep", overrideDepFn)
 
 	wsSettingsNoOp  = starlark.NewBuiltin("workspace_settings", noOp)
-	bazelDepNoOp    = starlark.NewBuiltin("bazel_dep", noOp)
 	overrideDepNoOp = starlark.NewBuiltin("override_dep", noOp)
 )
 
 func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResult, err error) {
 	thread := &starlark.Thread{
-		Name:  "discovery first pass",
+		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	thread.SetLocal(localKey, &threadState{module: &Module{}, overrideSet: OverrideSet{}})
+	thread.SetLocal(localKey, &threadState{
+		module:      &Module{Deps: make(map[string]ModuleKey)},
+		overrideSet: OverrideSet{},
+	})
 	firstPassEnv := starlark.StringDict{
 		"module":             moduleBuiltin,
 		"workspace_settings": wsSettingsBuiltin,
+		"bazel_dep":          bazelDepBuiltin,
 		"override_dep":       overrideDepBuiltin,
-
-		"bazel_dep": bazelDepNoOp,
 	}
 
+	moduleBazelPath := filepath.Join(wsDir, "MODULE.bazel")
 	var data []byte
-	if data, err = ioutil.ReadFile(filepath.Join(wsDir, "MODULE.bazel")); err != nil {
+	if data, err = ioutil.ReadFile(moduleBazelPath); err != nil {
 		return
 	}
-	if _, err = starlark.ExecFile(thread, "MODULE.bazel", data, firstPassEnv); err != nil {
+	if _, err = starlark.ExecFile(thread, moduleBazelPath, data, firstPassEnv); err != nil {
 		return
 	}
 
 	result.RootModuleName = getThreadState(thread).module.Key.Name
 	result.OverrideSet = getThreadState(thread).overrideSet
-	result.OverrideSet[result.RootModuleName] = LocalPathOverride{Path: wsDir} // TODO: error if an override for the root module already exists
-	result.DepGraph = DepGraph{}
-
-	if err = process(ModuleKey{result.RootModuleName, ""}, result.OverrideSet, result.DepGraph, reg); err != nil {
+	if _, exists := result.OverrideSet[result.RootModuleName]; exists {
+		err = fmt.Errorf("invalid override found for root module")
 		return
+	}
+	result.OverrideSet[result.RootModuleName] = LocalPathOverride{Path: wsDir}
+	result.DepGraph = DepGraph{
+		ModuleKey{result.RootModuleName, ""}: getThreadState(thread).module,
+	}
+
+	for _, depKey := range getThreadState(thread).module.Deps {
+		if err = process(depKey, result.OverrideSet, result.DepGraph, reg); err != nil {
+			return
+		}
 	}
 
 	return
