@@ -11,11 +11,11 @@ type myReg struct{}
 
 func (r *myReg) GetModuleBazel(name string, version string, registry string) ([]byte, error) {
 	if name == "B" && version == "1.0" {
-		return []byte(`module(name="B"); bazel_dep(name="D", version="0.1")`), nil
+		return []byte(`module(name="B", version="1.0"); bazel_dep(name="D", version="0.1")`), nil
 	} else if name == "C" && version == "2.0" {
-		return []byte(`module(name="C"); bazel_dep(name="D", version="0.1")`), nil
+		return []byte(`module(name="C", version="2.0"); bazel_dep(name="D", version="0.1")`), nil
 	} else if name == "D" && version == "0.1" {
-		return []byte(`module(name="D")`), nil
+		return []byte(`module(name="D", version="0.1")`), nil
 	}
 	return nil, fmt.Errorf("bad key: name = %v, version = %v", name, version)
 }

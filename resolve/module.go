@@ -12,9 +12,20 @@ type FetchInfo interface {
 }
 
 type Module struct {
-	Key  ModuleKey
-	Deps map[string]ModuleKey // the key type is the repo_name
+	// Fields from module()
+	Key               ModuleKey
+	CompatLevel       int
+	BazelCompat       string
+	ModuleRuleExports string
+	Toolchains        []string
+	ExecPlatforms     []string
+
+	// Deps come from bazel_dep(). The key type is the repo_name
+	Deps map[string]ModuleKey
+
+	// Tags come from module rule invocations
 	//tags []Tags
+
 	FetchInfo FetchInfo
 }
 
