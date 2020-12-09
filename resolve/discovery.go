@@ -85,16 +85,6 @@ func bazelDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 		// TODO: figure out how to include the file/line info here, same elsewhere
 		return nil, err
 	}
-	// Rewrite the version in `depKey` when there are certain types of
-	// overrides, to make sure that we only discover 1 version of that dep.
-	// TODO: This is now incorrect. We need to do the key rewrite after all
-	//   overrides are read.
-	switch o := getThreadState(t).overrideSet[depKey.Name].(type) {
-	case SingleVersionOverride:
-		depKey.Version = o.Version
-	case LocalPathOverride, UrlOverride, GitOverride:
-		depKey.Version = ""
-	}
 	if repoName == "" {
 		repoName = depKey.Name
 	}
@@ -171,8 +161,9 @@ func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResu
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
+	module := &Module{Deps: make(map[string]ModuleKey)}
 	thread.SetLocal(localKey, &threadState{
-		module:      &Module{Deps: make(map[string]ModuleKey)},
+		module:      module,
 		overrideSet: OverrideSet{},
 	})
 	firstPassEnv := starlark.StringDict{
@@ -191,7 +182,7 @@ func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResu
 		return
 	}
 
-	result.RootModuleName = getThreadState(thread).module.Key.Name
+	result.RootModuleName = module.Key.Name
 	result.OverrideSet = getThreadState(thread).overrideSet
 	if _, exists := result.OverrideSet[result.RootModuleName]; exists {
 		err = fmt.Errorf("invalid override found for root module")
@@ -199,19 +190,36 @@ func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResu
 	}
 	result.OverrideSet[result.RootModuleName] = LocalPathOverride{Path: wsDir}
 	result.DepGraph = DepGraph{
-		ModuleKey{result.RootModuleName, ""}: getThreadState(thread).module,
+		ModuleKey{result.RootModuleName, ""}: module,
 	}
 
-	for _, depKey := range getThreadState(thread).module.Deps {
-		if err = process(depKey, result.OverrideSet, result.DepGraph, reg); err != nil {
-			return
-		}
+	if err = processModuleDeps(module, result.OverrideSet, result.DepGraph, reg); err != nil {
+		return
 	}
-
 	return
 }
 
-func process(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, reg registry.RegistryHandler) error {
+func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGraph, reg registry.RegistryHandler) error {
+	// Rewrite the version in `depKey` when there are certain types of
+	// overrides, to make sure that we only discover 1 version of that dep.
+	for depRepoName, depKey := range module.Deps {
+		switch o := overrideSet[depKey.Name].(type) {
+		case SingleVersionOverride:
+			depKey.Version = o.Version
+		case LocalPathOverride, UrlOverride, GitOverride:
+			depKey.Version = ""
+		}
+		module.Deps[depRepoName] = depKey
+	}
+	for _, depKey := range module.Deps {
+		if err := processSingleDep(depKey, overrideSet, depGraph, reg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, reg registry.RegistryHandler) error {
 	if _, hasKey := depGraph[key]; hasKey {
 		return nil
 	}
@@ -246,10 +254,8 @@ func process(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, reg regi
 	if key.Version != "" && key.Version != curModule.Key.Version {
 		return fmt.Errorf("the MODULE.bazel file of %v@%v declares a different version (%v)", key.Name, key.Version, curModule.Key.Version)
 	}
-	for _, depKey := range getThreadState(thread).module.Deps {
-		if err = process(depKey, overrideSet, depGraph, reg); err != nil {
-			return err
-		}
+	if err = processModuleDeps(curModule, overrideSet, depGraph, reg); err != nil {
+		return err
 	}
 	return nil
 }
