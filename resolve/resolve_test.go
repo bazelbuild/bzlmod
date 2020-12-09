@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
@@ -78,7 +79,5 @@ repo(
     fingerprint = "fakefingerprint",
 )
 `
-	if ws != expectedWs {
-		t.Fatalf("unexpected WORKSPACE contents: %v", ws)
-	}
+	assert.Equal(t, expectedWs, ws)
 }

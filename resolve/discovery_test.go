@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
@@ -59,6 +60,31 @@ module(name="D", version="0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("%v", v)
-	t.Log("all good")
+	assert.Equal(t, "A", v.RootModuleName)
+	assert.Equal(t, OverrideSet{"A": LocalPathOverride{Path: wsDir}}, v.OverrideSet)
+	assert.Equal(t, DepGraph{
+		ModuleKey{"A", ""}: &Module{
+			Key: ModuleKey{"A", ""},
+			Deps: map[string]ModuleKey{
+				"B": {"B", "1.0"},
+				"C": {"C", "2.0"},
+			},
+		},
+		ModuleKey{"B", "1.0"}: &Module{
+			Key: ModuleKey{"B", "1.0"},
+			Deps: map[string]ModuleKey{
+				"D": {"D", "0.1"},
+			},
+		},
+		ModuleKey{"C", "2.0"}: &Module{
+			Key: ModuleKey{"C", "2.0"},
+			Deps: map[string]ModuleKey{
+				"D": {"D", "0.1"},
+			},
+		},
+		ModuleKey{"D", "0.1"}: &Module{
+			Key:  ModuleKey{"D", "0.1"},
+			Deps: map[string]ModuleKey{},
+		},
+	}, v.DepGraph)
 }
