@@ -76,18 +76,29 @@ func bazelDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
 	var depKey ModuleKey
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "name", &depKey.Name, "version", &depKey.Version); err != nil {
+	var repoName string
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
+		"name", &depKey.Name,
+		"version", &depKey.Version,
+		"repo_name?", &repoName,
+	); err != nil {
+		// TODO: figure out how to include the file/line info here, same elsewhere
 		return nil, err
 	}
 	// Rewrite the version in `depKey` when there are certain types of
 	// overrides, to make sure that we only discover 1 version of that dep.
+	// TODO: This is now incorrect. We need to do the key rewrite after all
+	//   overrides are read.
 	switch o := getThreadState(t).overrideSet[depKey.Name].(type) {
 	case SingleVersionOverride:
 		depKey.Version = o.Version
 	case LocalPathOverride, UrlOverride, GitOverride:
 		depKey.Version = ""
 	}
-	getThreadState(t).module.Deps[depKey.Name] = depKey
+	if repoName == "" {
+		repoName = depKey.Name
+	}
+	getThreadState(t).module.Deps[repoName] = depKey
 	return starlark.None, nil // TODO: return a smart value for module rules
 }
 
@@ -99,7 +110,7 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		moduleName            string
 		version               string
 		localPath             string
-		registry              string
+		reg                   string
 		git                   string
 		commit                string
 		url                   string
@@ -111,11 +122,11 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		"module_name", &moduleName,
 		"version?", &version,
 		"local_path?", &localPath,
-		"registry?", &registry,
+		"reg?", &reg,
 		"git?", &git,
 		"commit?", &commit,
 		"url?", &url,
-		"integrity?", &integrity,
+		"Integrity?", &integrity,
 		"patch_files?", &patchFiles,
 		"allow_multiple_versions?", &allowMultipleVersions,
 	); err != nil {
@@ -126,13 +137,13 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		return nil, fmt.Errorf("override_dep called twice on the same module %v", moduleName)
 	}
 	if version != "" {
-		overrideSet[moduleName] = SingleVersionOverride{Version: version, Registry: registry, Patches: patchFiles}
+		overrideSet[moduleName] = SingleVersionOverride{Version: version, Registry: reg, Patches: patchFiles}
 	} else if len(allowMultipleVersions) > 0 {
-		overrideSet[moduleName] = MultipleVersionsOverride{Versions: allowMultipleVersions, Registry: registry}
+		overrideSet[moduleName] = MultipleVersionsOverride{Versions: allowMultipleVersions, Registry: reg}
 	} else if localPath != "" {
 		overrideSet[moduleName] = LocalPathOverride{Path: localPath}
-	} else if registry != "" {
-		overrideSet[moduleName] = RegistryOverride{Registry: registry, Patches: patchFiles}
+	} else if reg != "" {
+		overrideSet[moduleName] = RegistryOverride{Registry: reg, Patches: patchFiles}
 	} else if git != "" {
 		overrideSet[moduleName] = GitOverride{Repo: git, Commit: commit, Patches: patchFiles}
 	} else if url != "" {
@@ -140,7 +151,7 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 	} else if len(patchFiles) != 0 {
 		overrideSet[moduleName] = PatchesOverride{Patches: patchFiles}
 	} else {
-		return nil, fmt.Errorf("nothing overridden?")
+		return nil, fmt.Errorf("nothing was overridden for module %v", moduleName)
 	}
 	return starlark.None, nil
 }
@@ -207,9 +218,8 @@ func process(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, reg regi
 
 	curModule := &Module{Deps: make(map[string]ModuleKey)}
 	depGraph[key] = curModule
-	var moduleBazel []byte
-	var err error
-	if moduleBazel, err = getModuleBazel(key, overrideSet[key.Name], reg); err != nil {
+	moduleBazel, err := getModuleBazel(key, overrideSet[key.Name], reg)
+	if err != nil {
 		return err
 	}
 

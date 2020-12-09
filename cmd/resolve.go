@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/bazelbuild/bzlmod/resolve"
 	"github.com/spf13/cobra"
@@ -29,7 +30,9 @@ var resolveCmd = &cobra.Command{
 resolving transitive dependencies, and outputting a WORKSPACE file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("resolve called")
-		resolve.Resolve()
+		if err := resolve.Resolve(".", nil); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Error: %v", err)
+		}
 	},
 }
 

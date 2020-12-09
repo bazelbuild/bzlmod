@@ -36,6 +36,7 @@ type Module struct {
 	//tags []Tags
 
 	FetchInfo FetchInfo
+	RepoName  string // this is filled post-selection
 }
 
 type DepGraph map[ModuleKey]*Module
