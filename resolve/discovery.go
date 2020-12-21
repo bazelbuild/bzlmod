@@ -156,7 +156,11 @@ var (
 	overrideDepNoOp = starlark.NewBuiltin("override_dep", noOp)
 )
 
-func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResult, err error) {
+// Run discovery. This step involves downloading and evaluating the MODULE.bazel files of all transitive
+// bazel_deps.
+// `wsDir` is the workspace directory, and `registries` is the list of registries to use (takes precedence
+// over the registries specified in `workspace_settings`).
+func Discovery(wsDir string, registries []string) (result DiscoveryResult, err error) {
 	thread := &starlark.Thread{
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
@@ -193,13 +197,13 @@ func Discovery(wsDir string, reg registry.RegistryHandler) (result DiscoveryResu
 		ModuleKey{result.RootModuleName, ""}: module,
 	}
 
-	if err = processModuleDeps(module, result.OverrideSet, result.DepGraph, reg); err != nil {
+	if err = processModuleDeps(module, result.OverrideSet, result.DepGraph, registries); err != nil {
 		return
 	}
 	return
 }
 
-func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGraph, reg registry.RegistryHandler) error {
+func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
 	// Rewrite the version in `depKey` when there are certain types of
 	// overrides, to make sure that we only discover 1 version of that dep.
 	for depRepoName, depKey := range module.Deps {
@@ -212,21 +216,21 @@ func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGrap
 		module.Deps[depRepoName] = depKey
 	}
 	for _, depKey := range module.Deps {
-		if err := processSingleDep(depKey, overrideSet, depGraph, reg); err != nil {
+		if err := processSingleDep(depKey, overrideSet, depGraph, registries); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, reg registry.RegistryHandler) error {
+func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
 	if _, hasKey := depGraph[key]; hasKey {
 		return nil
 	}
 
 	curModule := &Module{Deps: make(map[string]ModuleKey)}
 	depGraph[key] = curModule
-	moduleBazel, err := getModuleBazel(key, overrideSet[key.Name], reg)
+	moduleBazel, err := getModuleBazel(key, overrideSet[key.Name], registries)
 	if err != nil {
 		return err
 	}
@@ -254,13 +258,13 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 	if key.Version != "" && key.Version != curModule.Key.Version {
 		return fmt.Errorf("the MODULE.bazel file of %v@%v declares a different version (%v)", key.Name, key.Version, curModule.Key.Version)
 	}
-	if err = processModuleDeps(curModule, overrideSet, depGraph, reg); err != nil {
+	if err = processModuleDeps(curModule, overrideSet, depGraph, registries); err != nil {
 		return err
 	}
 	return nil
 }
 
-func getModuleBazel(key ModuleKey, override interface{}, reg registry.RegistryHandler) ([]byte, error) {
+func getModuleBazel(key ModuleKey, override interface{}, registries []string) ([]byte, error) {
 	switch o := override.(type) {
 	case LocalPathOverride:
 		return ioutil.ReadFile(filepath.Join(o.Path, "MODULE.bazel"))
@@ -271,8 +275,11 @@ func getModuleBazel(key ModuleKey, override interface{}, reg registry.RegistryHa
 		// TODO: download git & apply patch
 		return nil, fmt.Errorf("GitOverride unimplemented")
 	case interface{ Registry() string }:
-		return /*TODO*/ reg.GetModuleBazel(key.Name, key.Version /*TODO: ws.Registries,*/, o.Registry())
+		// TODO: make use of the returned registry
+		bytes, _, err := registry.GetModuleBazel(key.Name, key.Version, registries, o.Registry())
+		return bytes, err
 	default:
-		return /*TODO*/ reg.GetModuleBazel(key.Name, key.Version /*TODO: ws.Registries,*/, "")
+		bytes, _, err := registry.GetModuleBazel(key.Name, key.Version, registries, "")
+		return bytes, err
 	}
 }

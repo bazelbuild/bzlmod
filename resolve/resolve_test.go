@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"path/filepath"
@@ -15,23 +16,23 @@ bazel_dep(name="B", version="1.0", repo_name="BfromA")
 bazel_dep(name="C", version="2.0")
 bazel_dep(name="E", version="3.0", repo_name="EfromA")
 `)
-	reg := &myReg{}
-	reg.addModuleBazel(t, "B", "1.0", `
+	reg := registry.NewFake("fake")
+	reg.AddModuleBazel(t, "B", "1.0", `
 module(name="B", version="1.0")
 bazel_dep(name="D", version="0.1", repo_name="DfromB")
 `)
-	reg.addModuleBazel(t, "C", "2.0", `
+	reg.AddModuleBazel(t, "C", "2.0", `
 module(name="C", version="2.0")
 bazel_dep(name="D", version="0.1", repo_name="DfromC")
 `)
-	reg.addModuleBazel(t, "D", "0.1", `
+	reg.AddModuleBazel(t, "D", "0.1", `
 module(name="D", version="0.1")
 bazel_dep(name="E", version="3.0")
 `)
-	reg.addModuleBazel(t, "E", "3.0", `
+	reg.AddModuleBazel(t, "E", "3.0", `
 module(name="E", version="3.0")
 `)
-	if err := Resolve(wsDir, reg); err != nil {
+	if err := Resolve(wsDir, []string{reg.URL()}); err != nil {
 		t.Fatal(err)
 	}
 	wsBytes, err := ioutil.ReadFile(filepath.Join(wsDir, "WORKSPACE"))

@@ -2,14 +2,13 @@ package resolve
 
 import (
 	"fmt"
-	"github.com/bazelbuild/bzlmod/registry"
 	"html/template"
 	"os"
 	"path/filepath"
 )
 
-func Resolve(wsDir string, reg registry.RegistryHandler) error {
-	discoveryResult, err := Discovery(wsDir, reg)
+func Resolve(wsDir string, registries []string) error {
+	discoveryResult, err := Discovery(wsDir, registries)
 	if err != nil {
 		return fmt.Errorf("error during discovery: %v", err)
 	}

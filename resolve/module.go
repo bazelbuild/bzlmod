@@ -6,7 +6,7 @@ import (
 
 type ModuleKey struct {
 	Name    string
-	Version string // empty for modules with LocalPath/Url/Git overrides
+	Version string // empty for modules with LocalPath/URL/Git overrides
 }
 
 func (k ModuleKey) String() string {
