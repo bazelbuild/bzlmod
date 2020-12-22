@@ -43,8 +43,8 @@ module(name="D", version="0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "A", v.RootModuleName)
-	assert.Equal(t, OverrideSet{"A": LocalPathOverride{Path: wsDir}}, v.OverrideSet)
+	assert.Equal(t, "A", v.rootModuleName)
+	assert.Equal(t, OverrideSet{"A": LocalPathOverride{Path: wsDir}}, v.overrideSet)
 	assert.Equal(t, DepGraph{
 		ModuleKey{"A", ""}: &Module{
 			Key: ModuleKey{"A", ""},
@@ -69,7 +69,7 @@ module(name="D", version="0.1")
 			Key:  ModuleKey{"D", "0.1"},
 			Deps: map[string]ModuleKey{},
 		},
-	}, v.DepGraph)
+	}, v.depGraph)
 }
 
 func TestLocalPathOverride(t *testing.T) {
@@ -93,11 +93,11 @@ module(name="B", version="1.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "A", v.RootModuleName)
+	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{
 		"A": LocalPathOverride{Path: wsDirA},
 		"B": LocalPathOverride{Path: wsDirB},
-	}, v.OverrideSet)
+	}, v.overrideSet)
 	assert.Equal(t, DepGraph{
 		ModuleKey{"A", ""}: &Module{
 			Key: ModuleKey{"A", ""},
@@ -109,5 +109,5 @@ module(name="B", version="1.0")
 			Key:  ModuleKey{"B", "not-sure-yet"},
 			Deps: map[string]ModuleKey{},
 		},
-	}, v.DepGraph)
+	}, v.depGraph)
 }

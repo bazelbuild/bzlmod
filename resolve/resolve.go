@@ -7,23 +7,31 @@ import (
 	"path/filepath"
 )
 
+type context struct {
+	rootModuleName string
+	depGraph       DepGraph
+	overrideSet    OverrideSet
+}
+
 func Resolve(wsDir string, registries []string) error {
-	discoveryResult, err := Discovery(wsDir, registries)
+	ctx, err := Discovery(wsDir, registries)
 	if err != nil {
 		return fmt.Errorf("error during discovery: %v", err)
 	}
-	Selection(discoveryResult.DepGraph, discoveryResult.OverrideSet)
+	if err = Selection(ctx); err != nil {
+		return fmt.Errorf("error running selection: %v", err)
+	}
 	// TODO: run module rules
-	if err = writeLockFile(wsDir, discoveryResult.DepGraph); err != nil {
+	if err = writeLockFile(wsDir, ctx); err != nil {
 		return fmt.Errorf("error writing lockfile: %v", err)
 	}
-	if err = writeWorkspaceFile(wsDir, discoveryResult); err != nil {
+	if err = writeWorkspaceFile(wsDir, ctx); err != nil {
 		return fmt.Errorf("error writing workspace file: %v", err)
 	}
 	return nil
 }
 
-func writeLockFile(wsDir string, depGraph DepGraph) error {
+func writeLockFile(wsDir string, ctx *context) error {
 	// TODO
 	return nil
 }
@@ -45,7 +53,7 @@ repo(
 )
 {{end}}`
 
-func writeWorkspaceFile(wsDir string, discoveryResult DiscoveryResult) error {
+func writeWorkspaceFile(wsDir string, ctx *context) error {
 	type repoData struct {
 		Fingerprint string
 		Deps        map[string]string
@@ -55,23 +63,23 @@ func writeWorkspaceFile(wsDir string, discoveryResult DiscoveryResult) error {
 		Integrity string
 		Repos     map[string]repoData
 	}{
-		WsName:    discoveryResult.RootModuleName,
+		WsName:    ctx.rootModuleName,
 		Integrity: "sha256-fakevalue", // TODO
 		Repos:     make(map[string]repoData),
 	}
 
 	// Fill repoName for each module. TODO: move earlier
-	for moduleKey, module := range discoveryResult.DepGraph {
+	for moduleKey, module := range ctx.depGraph {
 		module.RepoName = moduleKey.Name
 	}
-	rootModule := discoveryResult.DepGraph[ModuleKey{discoveryResult.RootModuleName, ""}]
+	rootModule := ctx.depGraph[ModuleKey{ctx.rootModuleName, ""}]
 	rootModule.RepoName = ""
 	for repoName, depKey := range rootModule.Deps {
-		discoveryResult.DepGraph[depKey].RepoName = repoName
+		ctx.depGraph[depKey].RepoName = repoName
 	}
 
 	// Now fill the data struct.
-	for _, module := range discoveryResult.DepGraph {
+	for _, module := range ctx.depGraph {
 		if module.RepoName == "" {
 			continue
 		}
@@ -81,7 +89,7 @@ func writeWorkspaceFile(wsDir string, discoveryResult DiscoveryResult) error {
 			Deps:        repoDeps,
 		}
 		for depRepoName, depKey := range module.Deps {
-			repoDeps[depRepoName] = discoveryResult.DepGraph[depKey].RepoName
+			repoDeps[depRepoName] = ctx.depGraph[depKey].RepoName
 		}
 	}
 

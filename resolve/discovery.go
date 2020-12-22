@@ -10,12 +10,6 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type DiscoveryResult struct {
-	RootModuleName string
-	DepGraph
-	OverrideSet
-}
-
 type wsSettings struct {
 	vendorDir  string
 	registries []string
@@ -160,7 +154,7 @@ var (
 // bazel_deps.
 // `wsDir` is the workspace directory, and `registries` is the list of registries to use (takes precedence
 // over the registries specified in `workspace_settings`).
-func Discovery(wsDir string, registries []string) (result DiscoveryResult, err error) {
+func Discovery(wsDir string, registries []string) (*context, error) {
 	thread := &starlark.Thread{
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
@@ -178,29 +172,30 @@ func Discovery(wsDir string, registries []string) (result DiscoveryResult, err e
 	}
 
 	moduleBazelPath := filepath.Join(wsDir, "MODULE.bazel")
-	var data []byte
-	if data, err = ioutil.ReadFile(moduleBazelPath); err != nil {
-		return
+	moduleBazel, err := ioutil.ReadFile(moduleBazelPath)
+	if err != nil {
+		return nil, err
 	}
-	if _, err = starlark.ExecFile(thread, moduleBazelPath, data, firstPassEnv); err != nil {
-		return
-	}
-
-	result.RootModuleName = module.Key.Name
-	result.OverrideSet = getThreadState(thread).overrideSet
-	if _, exists := result.OverrideSet[result.RootModuleName]; exists {
-		err = fmt.Errorf("invalid override found for root module")
-		return
-	}
-	result.OverrideSet[result.RootModuleName] = LocalPathOverride{Path: wsDir}
-	result.DepGraph = DepGraph{
-		ModuleKey{result.RootModuleName, ""}: module,
+	if _, err = starlark.ExecFile(thread, moduleBazelPath, moduleBazel, firstPassEnv); err != nil {
+		return nil, err
 	}
 
-	if err = processModuleDeps(module, result.OverrideSet, result.DepGraph, registries); err != nil {
-		return
+	ctx := &context{
+		rootModuleName: module.Key.Name,
+		depGraph: DepGraph{
+			ModuleKey{module.Key.Name, ""}: module,
+		},
+		overrideSet: getThreadState(thread).overrideSet,
 	}
-	return
+	if _, exists := ctx.overrideSet[ctx.rootModuleName]; exists {
+		return nil, fmt.Errorf("invalid override found for root module")
+	}
+	ctx.overrideSet[ctx.rootModuleName] = LocalPathOverride{Path: wsDir}
+
+	if err = processModuleDeps(module, ctx.overrideSet, ctx.depGraph, registries); err != nil {
+		return nil, err
+	}
+	return ctx, nil
 }
 
 func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
@@ -256,7 +251,7 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 		return fmt.Errorf("the MODULE.bazel file of %v declares a different name (%v)", key.Name, curModule.Key.Name)
 	}
 	if key.Version != "" && key.Version != curModule.Key.Version {
-		return fmt.Errorf("the MODULE.bazel file of %v@%v declares a different version (%v)", key.Name, key.Version, curModule.Key.Version)
+		return fmt.Errorf("the MODULE.bazel file of %v declares a different version (%v)", key, curModule.Key.Version)
 	}
 	if err = processModuleDeps(curModule, overrideSet, depGraph, registries); err != nil {
 		return err
