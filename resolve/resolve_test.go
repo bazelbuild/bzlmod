@@ -23,14 +23,24 @@ bazel_dep(name="D", version="0.1", repo_name="DfromB")
 `)
 	reg.AddModuleBazel(t, "C", "2.0", `
 module(name="C", version="2.0")
-bazel_dep(name="D", version="0.1", repo_name="DfromC")
+bazel_dep(name="D", version="0.2", repo_name="DfromC")
 `)
 	reg.AddModuleBazel(t, "D", "0.1", `
 module(name="D", version="0.1")
-bazel_dep(name="E", version="3.0")
+bazel_dep(name="F", version="10.0")
+`)
+	reg.AddModuleBazel(t, "D", "0.2", `
+module(name="D", version="0.2")
+bazel_dep(name="E", version="2.0")
+`)
+	reg.AddModuleBazel(t, "E", "2.0", `
+module(name="E", version="2.0")
 `)
 	reg.AddModuleBazel(t, "E", "3.0", `
 module(name="E", version="3.0")
+`)
+	reg.AddModuleBazel(t, "F", "10.0", `
+module(name="F", version="10.0")
 `)
 	if err := Resolve(wsDir, []string{reg.URL()}); err != nil {
 		t.Fatal(err)
