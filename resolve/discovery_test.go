@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
@@ -27,17 +28,17 @@ bazel_dep(name="B", version="1.0")
 bazel_dep(name="C", version="2.0")
 `)
 	reg := registry.NewFake("fake")
-	reg.AddModuleBazel(t, "B", "1.0", `
+	reg.AddModule(t, "B", "1.0", `
 module(name="B", version="1.0")
 bazel_dep(name="D", version="0.1")
-`)
-	reg.AddModuleBazel(t, "C", "2.0", `
+`, nil)
+	reg.AddModule(t, "C", "2.0", `
 module(name="C", version="2.0")
 bazel_dep(name="D", version="0.1")
-`)
-	reg.AddModuleBazel(t, "D", "0.1", `
+`, nil)
+	reg.AddModule(t, "D", "0.1", `
 module(name="D", version="0.1")
-`)
+`, nil)
 
 	v, err := Discovery(wsDir, []string{reg.URL()})
 	if err != nil {
@@ -58,16 +59,19 @@ module(name="D", version="0.1")
 			Deps: map[string]ModuleKey{
 				"D": {"D", "0.1"},
 			},
+			Reg: reg,
 		},
 		ModuleKey{"C", "2.0"}: &Module{
 			Key: ModuleKey{"C", "2.0"},
 			Deps: map[string]ModuleKey{
 				"D": {"D", "0.1"},
 			},
+			Reg: reg,
 		},
 		ModuleKey{"D", "0.1"}: &Module{
 			Key:  ModuleKey{"D", "0.1"},
 			Deps: map[string]ModuleKey{},
+			Reg:  reg,
 		},
 	}, v.depGraph)
 }
@@ -85,9 +89,9 @@ override_dep(module_name="B", local_path="%v")
 module(name="B", version="not-sure-yet")
 `)
 	reg := registry.NewFake("fake")
-	reg.AddModuleBazel(t, "B", "1.0", `
+	reg.AddModule(t, "B", "1.0", `
 module(name="B", version="1.0")
-`)
+`, nil)
 
 	v, err := Discovery(wsDirA, []string{reg.URL()})
 	if err != nil {
@@ -106,8 +110,9 @@ module(name="B", version="1.0")
 			},
 		},
 		ModuleKey{"B", ""}: &Module{
-			Key:  ModuleKey{"B", "not-sure-yet"},
-			Deps: map[string]ModuleKey{},
+			Key:     ModuleKey{"B", "not-sure-yet"},
+			Deps:    map[string]ModuleKey{},
+			Fetcher: &fetch.LocalPath{Path: wsDirB},
 		},
 	}, v.depGraph)
 }

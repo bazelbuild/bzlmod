@@ -10,9 +10,9 @@ func TestGetModuleBazel_NoOverride(t *testing.T) {
 	fake1 := NewFake("1")
 	fake2 := NewFake("2")
 
-	fake1.AddModuleBazel(t, "A", "1.0", "Afrom1")
-	fake2.AddModuleBazel(t, "A", "1.0", "Afrom2")
-	fake2.AddModuleBazel(t, "B", "1.0", "Bfrom2")
+	fake1.AddModule(t, "A", "1.0", "Afrom1", nil)
+	fake2.AddModule(t, "A", "1.0", "Afrom2", nil)
+	fake2.AddModule(t, "B", "1.0", "Bfrom2", nil)
 
 	registries := []string{fake1.URL(), fake2.URL()}
 
@@ -41,10 +41,10 @@ func TestGetModuleBazel_WithOverride(t *testing.T) {
 	fake2 := NewFake("2")
 	fake3 := NewFake("3")
 
-	fake1.AddModuleBazel(t, "A", "1.0", "Afrom1")
-	fake2.AddModuleBazel(t, "A", "1.0", "Afrom2")
-	fake2.AddModuleBazel(t, "B", "1.0", "Bfrom2")
-	fake3.AddModuleBazel(t, "A", "1.0", "Afrom3")
+	fake1.AddModule(t, "A", "1.0", "Afrom1", nil)
+	fake2.AddModule(t, "A", "1.0", "Afrom2", nil)
+	fake2.AddModule(t, "B", "1.0", "Bfrom2", nil)
+	fake3.AddModule(t, "A", "1.0", "Afrom3", nil)
 
 	registries := []string{fake1.URL(), fake2.URL()}
 

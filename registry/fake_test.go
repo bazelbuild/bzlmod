@@ -8,9 +8,9 @@ import (
 
 func TestFake_GetModuleBazel(t *testing.T) {
 	fake := NewFake("fake")
-	fake.AddModuleBazel(t, "A", "1.0", "foo")
-	fake.AddModuleBazel(t, "A", "2.0", "bar")
-	fake.AddModuleBazel(t, "B", "1.0", "baz")
+	fake.AddModule(t, "A", "1.0", "foo", nil)
+	fake.AddModule(t, "A", "2.0", "bar", nil)
+	fake.AddModule(t, "B", "1.0", "baz", nil)
 
 	bytes, err := fake.GetModuleBazel("A", "1.0")
 	if assert.NoError(t, err) {

@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/fetch"
 	"io/ioutil"
 	"path/filepath"
 
@@ -94,11 +95,11 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		moduleName            string
 		version               string
 		localPath             string
-		reg                   string
 		git                   string
 		commit                string
 		url                   string
-		integrity             []string
+		integrity             string
+		reg                   string
 		patchFiles            []string
 		allowMultipleVersions []string
 	)
@@ -106,11 +107,11 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		"module_name", &moduleName,
 		"version?", &version,
 		"local_path?", &localPath,
-		"reg?", &reg,
 		"git?", &git,
 		"commit?", &commit,
 		"url?", &url,
-		"Integrity?", &integrity,
+		"integrity?", &integrity,
+		"reg?", &reg,
 		"patch_files?", &patchFiles,
 		"allow_multiple_versions?", &allowMultipleVersions,
 	); err != nil {
@@ -126,14 +127,12 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		overrideSet[moduleName] = MultipleVersionsOverride{Versions: allowMultipleVersions, Registry: reg}
 	} else if localPath != "" {
 		overrideSet[moduleName] = LocalPathOverride{Path: localPath}
-	} else if reg != "" {
-		overrideSet[moduleName] = RegistryOverride{Registry: reg, Patches: patchFiles}
 	} else if git != "" {
 		overrideSet[moduleName] = GitOverride{Repo: git, Commit: commit, Patches: patchFiles}
 	} else if url != "" {
 		overrideSet[moduleName] = UrlOverride{Url: url, Integrity: integrity, Patches: patchFiles}
-	} else if len(patchFiles) != 0 {
-		overrideSet[moduleName] = PatchesOverride{Patches: patchFiles}
+	} else if reg != "" || len(patchFiles) > 0 {
+		overrideSet[moduleName] = RegistryOverride{Registry: reg, Patches: patchFiles}
 	} else {
 		return nil, fmt.Errorf("nothing was overridden for module %v", moduleName)
 	}
@@ -225,7 +224,47 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 
 	curModule := &Module{Deps: make(map[string]ModuleKey)}
 	depGraph[key] = curModule
-	moduleBazel, err := getModuleBazel(key, overrideSet[key.Name], registries)
+	var (
+		moduleBazel []byte
+		err         error
+	)
+	override := overrideSet[key.Name]
+	switch override.(type) {
+	case LocalPathOverride, UrlOverride, GitOverride:
+		// For these overrides, there's no registry involved; we can concoct our own fetcher.
+		switch o := override.(type) {
+		case LocalPathOverride:
+			curModule.Fetcher = &fetch.LocalPath{Path: o.Path}
+		case UrlOverride:
+			curModule.Fetcher = &fetch.Http{
+				Urls:        []string{o.Url},
+				Integrity:   o.Integrity,
+				StripPrefix: "", // TODO
+				PatchFiles:  o.Patches,
+			}
+		case GitOverride:
+			curModule.Fetcher = &fetch.Git{
+				Repo:       o.Repo,
+				Commit:     o.Commit,
+				PatchFiles: o.Patches,
+			}
+		}
+		// Note that we don't fetch the entire module, but only the MODULE.bazel file, which crucially does not have
+		// patches applied. See documentation on the FetchModuleBazel method for more info.
+		moduleBazel, err = curModule.Fetcher.FetchModuleBazel()
+	default:
+		// Otherwise, we can directly grab the MODULE.bazel file from the registry.
+		regOverride := ""
+		switch o := override.(type) {
+		case MultipleVersionsOverride:
+			regOverride = o.Registry
+		case SingleVersionOverride:
+			regOverride = o.Registry
+		case RegistryOverride:
+			regOverride = o.Registry
+		}
+		moduleBazel, curModule.Reg, err = registry.GetModuleBazel(key.Name, key.Version, registries, regOverride)
+	}
 	if err != nil {
 		return err
 	}
@@ -257,24 +296,4 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 		return err
 	}
 	return nil
-}
-
-func getModuleBazel(key ModuleKey, override interface{}, registries []string) ([]byte, error) {
-	switch o := override.(type) {
-	case LocalPathOverride:
-		return ioutil.ReadFile(filepath.Join(o.Path, "MODULE.bazel"))
-	case UrlOverride:
-		// TODO: download url & apply patch
-		return nil, fmt.Errorf("UrlOverride unimplemented")
-	case GitOverride:
-		// TODO: download git & apply patch
-		return nil, fmt.Errorf("GitOverride unimplemented")
-	case interface{ Registry() string }:
-		// TODO: make use of the returned registry
-		bytes, _, err := registry.GetModuleBazel(key.Name, key.Version, registries, o.Registry())
-		return bytes, err
-	default:
-		bytes, _, err := registry.GetModuleBazel(key.Name, key.Version, registries, "")
-		return bytes, err
-	}
 }

@@ -3,14 +3,14 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"github.com/bazelbuild/bzlmod/fetch"
 	urlpkg "net/url"
 )
 
 type Registry interface {
 	URL() string
 	GetModuleBazel(name string, version string) ([]byte, error)
-	GetFetchInfo(name string, version string) (interface{}, error)
-	Fetch(fetchInfo interface{}, path string) error
+	GetFetcher(name string, version string) (fetch.Fetcher, error)
 }
 
 var schemes = make(map[string]func(url string) (Registry, error))

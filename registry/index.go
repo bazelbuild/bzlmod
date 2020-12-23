@@ -1,5 +1,7 @@
 package registry
 
+import "github.com/bazelbuild/bzlmod/fetch"
+
 type Index struct {
 	url string
 }
@@ -16,11 +18,7 @@ func (i *Index) GetModuleBazel(name string, version string) ([]byte, error) {
 	panic("implement me")
 }
 
-func (i *Index) GetFetchInfo(name string, version string) (interface{}, error) {
-	panic("implement me")
-}
-
-func (i *Index) Fetch(fetchInfo interface{}, path string) error {
+func (i *Index) GetFetcher(name string, version string) (fetch.Fetcher, error) {
 	panic("implement me")
 }
 
