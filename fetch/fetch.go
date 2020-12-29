@@ -23,15 +23,15 @@ type Fetcher interface {
 // Wrapper wraps all known implementations of the Fetcher interface and acts as a multiplexer (only 1 member should be
 // non-nil). It's useful in JSON marshalling/unmarshalling.
 type Wrapper struct {
-	Http      *Http      `json:",omitempty"`
+	Archive   *Archive   `json:",omitempty"`
 	Git       *Git       `json:",omitempty"`
 	LocalPath *LocalPath `json:",omitempty"`
 }
 
 func Wrap(f Fetcher) Wrapper {
 	switch ft := f.(type) {
-	case *Http:
-		return Wrapper{Http: ft}
+	case *Archive:
+		return Wrapper{Archive: ft}
 	case *Git:
 		return Wrapper{Git: ft}
 	case *LocalPath:
@@ -41,8 +41,8 @@ func Wrap(f Fetcher) Wrapper {
 }
 
 func (w Wrapper) Unwrap() Fetcher {
-	if w.Http != nil {
-		return w.Http
+	if w.Archive != nil {
+		return w.Archive
 	}
 	if w.Git != nil {
 		return w.Git
@@ -58,19 +58,19 @@ func (w Wrapper) FetchModuleBazel() ([]byte, error) {
 	return w.Unwrap().FetchModuleBazel()
 }
 
-type Http struct {
-	Urls        []string
+type Archive struct {
+	URLs        []string
 	Integrity   string
 	StripPrefix string
 	PatchFiles  []string
 }
 
-func (h *Http) Fetch() (string, error) {
-	return "", fmt.Errorf("http fetch unimplemented")
+func (a *Archive) Fetch() (string, error) {
+	return "", fmt.Errorf("archive fetch unimplemented")
 }
 
-func (h *Http) FetchModuleBazel() ([]byte, error) {
-	return nil, fmt.Errorf("http fetch unimplemented")
+func (a *Archive) FetchModuleBazel() ([]byte, error) {
+	return nil, fmt.Errorf("archive fetch unimplemented")
 }
 
 type Git struct {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bazelbuild/bzlmod/fetch"
-	urlpkg "net/url"
+	urls "net/url"
 )
 
 type Registry interface {
@@ -13,16 +13,16 @@ type Registry interface {
 	GetFetcher(name string, version string) (fetch.Fetcher, error)
 }
 
-var schemes = make(map[string]func(url string) (Registry, error))
+var schemes = make(map[string]func(url *urls.URL) (Registry, error))
 
-func New(url string) (Registry, error) {
-	u, err := urlpkg.Parse(url)
+func New(rawurl string) (Registry, error) {
+	url, err := urls.Parse(rawurl)
 	if err != nil {
 		return nil, err
 	}
-	fn := schemes[u.Scheme]
+	fn := schemes[url.Scheme]
 	if fn == nil {
-		return nil, fmt.Errorf("unrecognized registry scheme %v", u.Scheme)
+		return nil, fmt.Errorf("unrecognized registry scheme %v", url.Scheme)
 	}
 	return fn(url)
 }

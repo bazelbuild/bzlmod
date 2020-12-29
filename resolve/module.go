@@ -11,7 +11,7 @@ type ModuleKey struct {
 	Version string // empty for modules with LocalPath/URL/Git overrides
 }
 
-func (k ModuleKey) String() string {
+func (k *ModuleKey) String() string {
 	if k.Version == "" {
 		return fmt.Sprintf("%v@_", k.Name)
 	}
@@ -67,8 +67,8 @@ type LocalPathOverride struct {
 	Path string
 }
 
-type UrlOverride struct {
-	Url       string
+type URLOverride struct {
+	URL       string
 	Integrity string
 	Patches   []string
 }

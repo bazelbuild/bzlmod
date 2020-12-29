@@ -130,7 +130,7 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 	} else if git != "" {
 		overrideSet[moduleName] = GitOverride{Repo: git, Commit: commit, Patches: patchFiles}
 	} else if url != "" {
-		overrideSet[moduleName] = UrlOverride{Url: url, Integrity: integrity, Patches: patchFiles}
+		overrideSet[moduleName] = URLOverride{URL: url, Integrity: integrity, Patches: patchFiles}
 	} else if reg != "" || len(patchFiles) > 0 {
 		overrideSet[moduleName] = RegistryOverride{Registry: reg, Patches: patchFiles}
 	} else {
@@ -204,7 +204,7 @@ func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGrap
 		switch o := overrideSet[depKey.Name].(type) {
 		case SingleVersionOverride:
 			depKey.Version = o.Version
-		case LocalPathOverride, UrlOverride, GitOverride:
+		case LocalPathOverride, URLOverride, GitOverride:
 			depKey.Version = ""
 		}
 		module.Deps[depRepoName] = depKey
@@ -224,47 +224,7 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 
 	curModule := &Module{Deps: make(map[string]ModuleKey)}
 	depGraph[key] = curModule
-	var (
-		moduleBazel []byte
-		err         error
-	)
-	override := overrideSet[key.Name]
-	switch override.(type) {
-	case LocalPathOverride, UrlOverride, GitOverride:
-		// For these overrides, there's no registry involved; we can concoct our own fetcher.
-		switch o := override.(type) {
-		case LocalPathOverride:
-			curModule.Fetcher = &fetch.LocalPath{Path: o.Path}
-		case UrlOverride:
-			curModule.Fetcher = &fetch.Http{
-				Urls:        []string{o.Url},
-				Integrity:   o.Integrity,
-				StripPrefix: "", // TODO
-				PatchFiles:  o.Patches,
-			}
-		case GitOverride:
-			curModule.Fetcher = &fetch.Git{
-				Repo:       o.Repo,
-				Commit:     o.Commit,
-				PatchFiles: o.Patches,
-			}
-		}
-		// Note that we don't fetch the entire module, but only the MODULE.bazel file, which crucially does not have
-		// patches applied. See documentation on the FetchModuleBazel method for more info.
-		moduleBazel, err = curModule.Fetcher.FetchModuleBazel()
-	default:
-		// Otherwise, we can directly grab the MODULE.bazel file from the registry.
-		regOverride := ""
-		switch o := override.(type) {
-		case MultipleVersionsOverride:
-			regOverride = o.Registry
-		case SingleVersionOverride:
-			regOverride = o.Registry
-		case RegistryOverride:
-			regOverride = o.Registry
-		}
-		moduleBazel, curModule.Reg, err = registry.GetModuleBazel(key.Name, key.Version, registries, regOverride)
-	}
+	moduleBazel, err := getModuleBazel(key, curModule, overrideSet, registries)
 	if err != nil {
 		return err
 	}
@@ -296,4 +256,48 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 		return err
 	}
 	return nil
+}
+
+// getModuleBazel grabs the MODULE.bazel file for the given key, taking into account the appropriate override and the
+// list of registries. In addition to returning the MODULE.bazel file contents or an error, it also writes the
+// appropriate fetcher or registry into the provided `module` variable.
+func getModuleBazel(key ModuleKey, module *Module, overrideSet OverrideSet, registries []string) (moduleBazel []byte, err error) {
+	override := overrideSet[key.Name]
+	switch override.(type) {
+	case LocalPathOverride, URLOverride, GitOverride:
+		// For these overrides, there's no registry involved; we can concoct our own fetcher.
+		switch o := override.(type) {
+		case LocalPathOverride:
+			module.Fetcher = &fetch.LocalPath{Path: o.Path}
+		case URLOverride:
+			module.Fetcher = &fetch.Archive{
+				URLs:        []string{o.URL},
+				Integrity:   o.Integrity,
+				StripPrefix: "", // TODO
+				PatchFiles:  o.Patches,
+			}
+		case GitOverride:
+			module.Fetcher = &fetch.Git{
+				Repo:       o.Repo,
+				Commit:     o.Commit,
+				PatchFiles: o.Patches,
+			}
+		}
+		// Note that we don't fetch the entire module, but only the MODULE.bazel file, which crucially does not have
+		// patches applied. See documentation on the FetchModuleBazel method for more info.
+		return module.Fetcher.FetchModuleBazel()
+	default:
+		// Otherwise, we can directly grab the MODULE.bazel file from the registry.
+		regOverride := ""
+		switch o := override.(type) {
+		case MultipleVersionsOverride:
+			regOverride = o.Registry
+		case SingleVersionOverride:
+			regOverride = o.Registry
+		case RegistryOverride:
+			regOverride = o.Registry
+		}
+		moduleBazel, module.Reg, err = registry.GetModuleBazel(key.Name, key.Version, registries, regOverride)
+		return
+	}
 }

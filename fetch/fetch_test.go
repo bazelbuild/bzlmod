@@ -10,8 +10,8 @@ import (
 
 func TestWrapper_JSONRoundtrip(t *testing.T) {
 	testCases := []Fetcher{
-		&Http{
-			Urls:        []string{"https://bazel.build/"},
+		&Archive{
+			URLs:        []string{"https://bazel.build/", "https://build.bazel/"},
 			Integrity:   "sha256-blah",
 			StripPrefix: "",
 			PatchFiles:  nil,

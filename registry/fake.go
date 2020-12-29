@@ -3,7 +3,7 @@ package registry
 import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/fetch"
-	urlpkg "net/url"
+	urls "net/url"
 	"testing"
 )
 
@@ -60,14 +60,10 @@ func (f *Fake) GetFetcher(name string, version string) (fetch.Fetcher, error) {
 	return module.fetcher, nil
 }
 
-func fakeScheme(url string) (Registry, error) {
-	u, err := urlpkg.Parse(url)
-	if err != nil {
-		return nil, err
-	}
-	fake := fakes[u.Opaque]
+func fakeScheme(url *urls.URL) (Registry, error) {
+	fake := fakes[url.Opaque]
 	if fake == nil {
-		return nil, fmt.Errorf("unknown fake registry: %v", u.Opaque)
+		return nil, fmt.Errorf("unknown fake registry: %v", url.Opaque)
 	}
 	return fake, nil
 }
