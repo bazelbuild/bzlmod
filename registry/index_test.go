@@ -27,17 +27,17 @@ func TestFileIndex_GetModuleBazel(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(dir, "A", "1.0", "MODULE.bazel"), "kek")
 	testutil.WriteFile(t, filepath.Join(dir, "B", "2.0", "MODULE.bazel"), "lel")
 
-	bytes, err := fi.GetModuleBazel("A", "1.0")
+	bytes, err := fi.GetModuleBazel(common.ModuleKey{"A", "1.0"})
 	if assert.NoError(t, err) {
 		assert.Equal(t, []byte("kek"), bytes)
 	}
 
-	bytes, err = fi.GetModuleBazel("B", "2.0")
+	bytes, err = fi.GetModuleBazel(common.ModuleKey{"B", "2.0"})
 	if assert.NoError(t, err) {
 		assert.Equal(t, []byte("lel"), bytes)
 	}
 
-	bytes, err = fi.GetModuleBazel("A", "2.0")
+	bytes, err = fi.GetModuleBazel(common.ModuleKey{"A", "2.0"})
 	if err == nil {
 		t.Errorf("unexpected success getting A@2.0: got %v", string(bytes))
 	} else {
@@ -71,7 +71,7 @@ func TestFileIndex_GetFetcher(t *testing.T) {
   "integrity": "sha256-bluh"
 }`)
 
-	fetcher, err := fi.GetFetcher("A", "1.0")
+	fetcher, err := fi.GetFetcher(common.ModuleKey{"A", "1.0"})
 	if assert.NoError(t, err) {
 		assert.Equal(t, &fetch.Archive{
 			URLs: []string{
@@ -85,7 +85,7 @@ func TestFileIndex_GetFetcher(t *testing.T) {
 		}, fetcher)
 	}
 
-	fetcher, err = fi.GetFetcher("A", "2.0")
+	fetcher, err = fi.GetFetcher(common.ModuleKey{"A", "2.0"})
 	if assert.NoError(t, err) {
 		assert.Equal(t, &fetch.Archive{
 			URLs: []string{
@@ -102,7 +102,7 @@ func TestFileIndex_GetFetcher(t *testing.T) {
 		}, fetcher)
 	}
 
-	fetcher, err = fi.GetFetcher("B", "1.0")
+	fetcher, err = fi.GetFetcher(common.ModuleKey{"B", "1.0"})
 	if assert.NoError(t, err) {
 		assert.Equal(t, &fetch.Archive{
 			URLs: []string{

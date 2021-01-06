@@ -71,7 +71,7 @@ func bazelDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 	if len(args) > 0 {
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
-	var depKey ModuleKey
+	var depKey common.ModuleKey
 	var repoName string
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"name", &depKey.Name,
@@ -159,7 +159,7 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	module := &Module{Deps: make(map[string]ModuleKey)}
+	module := &Module{Deps: make(map[string]common.ModuleKey)}
 	thread.SetLocal(localKey, &threadState{
 		module:      module,
 		overrideSet: OverrideSet{},
@@ -183,7 +183,7 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 	ctx := &context{
 		rootModuleName: module.Key.Name,
 		depGraph: DepGraph{
-			ModuleKey{module.Key.Name, ""}: module,
+			common.ModuleKey{module.Key.Name, ""}: module,
 		},
 		overrideSet: getThreadState(thread).overrideSet,
 	}
@@ -218,12 +218,12 @@ func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGrap
 	return nil
 }
 
-func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
+func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
 	if _, hasKey := depGraph[key]; hasKey {
 		return nil
 	}
 
-	curModule := &Module{Deps: make(map[string]ModuleKey)}
+	curModule := &Module{Deps: make(map[string]common.ModuleKey)}
 	depGraph[key] = curModule
 	moduleBazel, err := getModuleBazel(key, curModule, overrideSet, registries)
 	if err != nil {
@@ -262,7 +262,7 @@ func processSingleDep(key ModuleKey, overrideSet OverrideSet, depGraph DepGraph,
 // getModuleBazel grabs the MODULE.bazel file for the given key, taking into account the appropriate override and the
 // list of registries. In addition to returning the MODULE.bazel file contents or an error, it also writes the
 // appropriate fetcher or registry into the provided `module` variable.
-func getModuleBazel(key ModuleKey, module *Module, overrideSet OverrideSet, registries []string) (moduleBazel []byte, err error) {
+func getModuleBazel(key common.ModuleKey, module *Module, overrideSet OverrideSet, registries []string) (moduleBazel []byte, err error) {
 	override := overrideSet[key.Name]
 	switch override.(type) {
 	case LocalPathOverride, URLOverride, GitOverride:
@@ -305,7 +305,7 @@ func getModuleBazel(key ModuleKey, module *Module, overrideSet OverrideSet, regi
 		case RegistryOverride:
 			regOverride = o.Registry
 		}
-		moduleBazel, module.Reg, err = registry.GetModuleBazel(key.Name, key.Version, registries, regOverride)
+		moduleBazel, module.Reg, err = registry.GetModuleBazel(key, registries, regOverride)
 		return
 	}
 }

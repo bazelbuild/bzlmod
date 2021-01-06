@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"github.com/bazelbuild/bzlmod/common/testutil"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,7 @@ import (
 
 func TestRepoNames(t *testing.T) {
 	wsDir := t.TempDir()
-	writeLocalModuleBazel(t, wsDir, `
+	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
 module(name="A")
 bazel_dep(name="B", version="1.0", repo_name="BfromA")
 bazel_dep(name="C", version="2.0")

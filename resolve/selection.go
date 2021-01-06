@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/hashicorp/go-version"
 )
 
@@ -47,9 +48,9 @@ func Selection(ctx *context) error {
 				return fmt.Errorf("this should never happen, but nothing is selected for module %v", depKey.Name)
 			}
 			if v == nil {
-				module.Deps[repoName] = ModuleKey{depKey.Name, ""}
+				module.Deps[repoName] = common.ModuleKey{depKey.Name, ""}
 			} else {
-				module.Deps[repoName] = ModuleKey{depKey.Name, v.Original()}
+				module.Deps[repoName] = common.ModuleKey{depKey.Name, v.Original()}
 			}
 		}
 	}
@@ -64,8 +65,8 @@ func Selection(ctx *context) error {
 	// Here E1 would still remain in the graph (since it's selected for E) but nobody depends on it anymore since D1
 	// is no longer in the graph.
 	// We can do this step by collecting all deps transitively from the root module.
-	transitive := make(map[ModuleKey]bool)
-	collectDeps(ModuleKey{ctx.rootModuleName, ""}, ctx.depGraph, transitive)
+	transitive := make(map[common.ModuleKey]bool)
+	collectDeps(common.ModuleKey{ctx.rootModuleName, ""}, ctx.depGraph, transitive)
 	for key := range ctx.depGraph {
 		if !transitive[key] {
 			delete(ctx.depGraph, key)
@@ -75,7 +76,7 @@ func Selection(ctx *context) error {
 	return nil
 }
 
-func collectDeps(key ModuleKey, depGraph DepGraph, transitive map[ModuleKey]bool) {
+func collectDeps(key common.ModuleKey, depGraph DepGraph, transitive map[common.ModuleKey]bool) {
 	if transitive[key] {
 		// Already collected.
 		return

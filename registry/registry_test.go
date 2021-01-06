@@ -2,6 +2,7 @@ package registry
 
 import (
 	"errors"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -16,19 +17,19 @@ func TestGetModuleBazel_NoOverride(t *testing.T) {
 
 	registries := []string{fake1.URL(), fake2.URL()}
 
-	bytes, reg, err := GetModuleBazel("A", "1.0", registries, "")
+	bytes, reg, err := GetModuleBazel(common.ModuleKey{"A", "1.0"}, registries, "")
 	if assert.NoError(t, err) {
 		assert.Equal(t, []byte("Afrom1"), bytes)
 		assert.Equal(t, fake1, reg)
 	}
 
-	bytes, reg, err = GetModuleBazel("B", "1.0", registries, "")
+	bytes, reg, err = GetModuleBazel(common.ModuleKey{"B", "1.0"}, registries, "")
 	if assert.NoError(t, err) {
 		assert.Equal(t, []byte("Bfrom2"), bytes)
 		assert.Equal(t, fake2, reg)
 	}
 
-	bytes, reg, err = GetModuleBazel("C", "1.0", registries, "")
+	bytes, reg, err = GetModuleBazel(common.ModuleKey{"C", "1.0"}, registries, "")
 	if err == nil {
 		t.Errorf("unexpected success getting C@1.0: got %v", string(bytes))
 	} else {
@@ -48,20 +49,20 @@ func TestGetModuleBazel_WithOverride(t *testing.T) {
 
 	registries := []string{fake1.URL(), fake2.URL()}
 
-	bytes, reg, err := GetModuleBazel("A", "1.0", registries, fake3.URL())
+	bytes, reg, err := GetModuleBazel(common.ModuleKey{"A", "1.0"}, registries, fake3.URL())
 	if assert.NoError(t, err) {
 		assert.Equal(t, []byte("Afrom3"), bytes)
 		assert.Equal(t, fake3, reg)
 	}
 
-	bytes, reg, err = GetModuleBazel("B", "1.0", registries, fake3.URL())
+	bytes, reg, err = GetModuleBazel(common.ModuleKey{"B", "1.0"}, registries, fake3.URL())
 	if err == nil {
 		t.Errorf("unexpected success getting B@1.0: got %v", string(bytes))
 	} else {
 		assert.True(t, errors.Is(err, ErrNotFound))
 	}
 
-	bytes, reg, err = GetModuleBazel("C", "1.0", registries, fake3.URL())
+	bytes, reg, err = GetModuleBazel(common.ModuleKey{"C", "1.0"}, registries, fake3.URL())
 	if err == nil {
 		t.Errorf("unexpected success getting C@1.0: got %v", string(bytes))
 	} else {

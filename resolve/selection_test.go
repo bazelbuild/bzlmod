@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -8,38 +9,38 @@ import (
 
 func TestSelection_SimpleDiamond(t *testing.T) {
 	depGraph := DepGraph{
-		ModuleKey{"A", ""}: &Module{
-			Key: ModuleKey{"A", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"A", ""}: &Module{
+			Key: common.ModuleKey{"A", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"myB": {"B", ""},
 				"myC": {"C", "1.0"},
 			},
 		},
-		ModuleKey{"B", ""}: &Module{
-			Key: ModuleKey{"B", "local-version"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"B", ""}: &Module{
+			Key: common.ModuleKey{"B", "local-version"},
+			Deps: map[string]common.ModuleKey{
 				"myD": {"D", "1.0"},
 			},
 		},
-		ModuleKey{"C", "1.0"}: &Module{
-			Key: ModuleKey{"C", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"C", "1.0"}: &Module{
+			Key: common.ModuleKey{"C", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"yourD": {"D", "1.1"},
 			},
 		},
-		ModuleKey{"D", "1.0"}: &Module{
-			Key: ModuleKey{"D", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"D", "1.0"}: &Module{
+			Key: common.ModuleKey{"D", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"E": {"E", "1.0"},
 			},
 		},
-		ModuleKey{"D", "1.1"}: &Module{
-			Key:  ModuleKey{"D", "1.1"},
-			Deps: map[string]ModuleKey{},
+		common.ModuleKey{"D", "1.1"}: &Module{
+			Key:  common.ModuleKey{"D", "1.1"},
+			Deps: map[string]common.ModuleKey{},
 		},
-		ModuleKey{"E", "1.0"}: &Module{
-			Key:  ModuleKey{"E", "1.0"},
-			Deps: map[string]ModuleKey{},
+		common.ModuleKey{"E", "1.0"}: &Module{
+			Key:  common.ModuleKey{"E", "1.0"},
+			Deps: map[string]common.ModuleKey{},
 		},
 	}
 	ctx := &context{
@@ -49,28 +50,28 @@ func TestSelection_SimpleDiamond(t *testing.T) {
 	}
 	require.NoError(t, Selection(ctx))
 	expectedDepGraph := DepGraph{
-		ModuleKey{"A", ""}: &Module{
-			Key: ModuleKey{"A", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"A", ""}: &Module{
+			Key: common.ModuleKey{"A", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"myB": {"B", ""},
 				"myC": {"C", "1.0"},
 			},
 		},
-		ModuleKey{"B", ""}: &Module{
-			Key: ModuleKey{"B", "local-version"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"B", ""}: &Module{
+			Key: common.ModuleKey{"B", "local-version"},
+			Deps: map[string]common.ModuleKey{
 				"myD": {"D", "1.1"},
 			},
 		},
-		ModuleKey{"C", "1.0"}: &Module{
-			Key: ModuleKey{"C", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"C", "1.0"}: &Module{
+			Key: common.ModuleKey{"C", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"yourD": {"D", "1.1"},
 			},
 		},
-		ModuleKey{"D", "1.1"}: &Module{
-			Key:  ModuleKey{"D", "1.1"},
-			Deps: map[string]ModuleKey{},
+		common.ModuleKey{"D", "1.1"}: &Module{
+			Key:  common.ModuleKey{"D", "1.1"},
+			Deps: map[string]common.ModuleKey{},
 		},
 	}
 	assert.Equal(t, expectedDepGraph, depGraph)

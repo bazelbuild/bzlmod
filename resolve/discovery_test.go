@@ -2,27 +2,18 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
+	"github.com/bazelbuild/bzlmod/common/testutil"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 )
 
-func writeLocalModuleBazel(t *testing.T, dir string, moduleBazel string) {
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		t.Fatal(err)
-	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "MODULE.bazel"), []byte(moduleBazel), 0644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestSimpleDiamond(t *testing.T) {
 	wsDir := t.TempDir()
-	writeLocalModuleBazel(t, wsDir, `
+	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
 module(name="A")
 bazel_dep(name="B", version="1.0")
 bazel_dep(name="C", version="2.0")
@@ -47,30 +38,30 @@ module(name="D", version="0.1")
 	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{"A": LocalPathOverride{Path: wsDir}}, v.overrideSet)
 	assert.Equal(t, DepGraph{
-		ModuleKey{"A", ""}: &Module{
-			Key: ModuleKey{"A", ""},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"A", ""}: &Module{
+			Key: common.ModuleKey{"A", ""},
+			Deps: map[string]common.ModuleKey{
 				"B": {"B", "1.0"},
 				"C": {"C", "2.0"},
 			},
 		},
-		ModuleKey{"B", "1.0"}: &Module{
-			Key: ModuleKey{"B", "1.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"B", "1.0"}: &Module{
+			Key: common.ModuleKey{"B", "1.0"},
+			Deps: map[string]common.ModuleKey{
 				"D": {"D", "0.1"},
 			},
 			Reg: reg,
 		},
-		ModuleKey{"C", "2.0"}: &Module{
-			Key: ModuleKey{"C", "2.0"},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"C", "2.0"}: &Module{
+			Key: common.ModuleKey{"C", "2.0"},
+			Deps: map[string]common.ModuleKey{
 				"D": {"D", "0.1"},
 			},
 			Reg: reg,
 		},
-		ModuleKey{"D", "0.1"}: &Module{
-			Key:  ModuleKey{"D", "0.1"},
-			Deps: map[string]ModuleKey{},
+		common.ModuleKey{"D", "0.1"}: &Module{
+			Key:  common.ModuleKey{"D", "0.1"},
+			Deps: map[string]common.ModuleKey{},
 			Reg:  reg,
 		},
 	}, v.depGraph)
@@ -80,12 +71,12 @@ func TestLocalPathOverride(t *testing.T) {
 	wsDir := t.TempDir()
 	wsDirA := filepath.Join(wsDir, "A")
 	wsDirB := filepath.Join(wsDir, "B")
-	writeLocalModuleBazel(t, wsDirA, fmt.Sprintf(`
+	testutil.WriteFile(t, filepath.Join(wsDirA, "MODULE.bazel"), fmt.Sprintf(`
 module(name="A")
 bazel_dep(name="B", version="1.0")
 override_dep(module_name="B", local_path="%v")
 `, wsDirB))
-	writeLocalModuleBazel(t, wsDirB, `
+	testutil.WriteFile(t, filepath.Join(wsDirB, "MODULE.bazel"), `
 module(name="B", version="not-sure-yet")
 `)
 	reg := registry.NewFake("fake")
@@ -103,15 +94,15 @@ module(name="B", version="1.0")
 		"B": LocalPathOverride{Path: wsDirB},
 	}, v.overrideSet)
 	assert.Equal(t, DepGraph{
-		ModuleKey{"A", ""}: &Module{
-			Key: ModuleKey{"A", ""},
-			Deps: map[string]ModuleKey{
+		common.ModuleKey{"A", ""}: &Module{
+			Key: common.ModuleKey{"A", ""},
+			Deps: map[string]common.ModuleKey{
 				"B": {"B", ""},
 			},
 		},
-		ModuleKey{"B", ""}: &Module{
-			Key:     ModuleKey{"B", "not-sure-yet"},
-			Deps:    map[string]ModuleKey{},
+		common.ModuleKey{"B", ""}: &Module{
+			Key:     common.ModuleKey{"B", "not-sure-yet"},
+			Deps:    map[string]common.ModuleKey{},
 			Fetcher: &fetch.LocalPath{Path: wsDirB},
 		},
 	}, v.depGraph)

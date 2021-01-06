@@ -52,20 +52,20 @@ func (hi *HTTPIndex) URL() string {
 	return hi.url.String()
 }
 
-func (fi *FileIndex) GetModuleBazel(name string, version string) ([]byte, error) {
-	bytes, err := ioutil.ReadFile(filepath.Join(fi.localPath, name, version, "MODULE.bazel"))
+func (fi *FileIndex) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
+	bytes, err := ioutil.ReadFile(filepath.Join(fi.localPath, key.Name, key.Version, "MODULE.bazel"))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%w: %v@%v", ErrNotFound, name, version)
+		return nil, fmt.Errorf("%w: %v", ErrNotFound, key)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("error getting MODULE.bazel file for %v@%v: %v", name, version, err)
+		return nil, fmt.Errorf("error getting MODULE.bazel file for %v: %v", key, err)
 	}
 	return bytes, nil
 }
 
-func (hi *HTTPIndex) GetModuleBazel(name string, version string) ([]byte, error) {
+func (hi *HTTPIndex) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
 	u := *hi.url
-	u.Path = path.Join(u.Path, name, version, "MODULE.bazel")
+	u.Path = path.Join(u.Path, key.Name, key.Version, "MODULE.bazel")
 	panic("implement me")
 }
 
@@ -89,23 +89,23 @@ type sourceJSON struct {
 	PatchStrip  int      `json:"patch_strip"`
 }
 
-func (fi *FileIndex) GetFetcher(name string, version string) (fetch.Fetcher, error) {
+func (fi *FileIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	bazelRegistryJSON := bazelRegistryJSON{}
 	if err := readAndParseJSON(filepath.Join(fi.localPath, "bazel_registry.json"), &bazelRegistryJSON); err != nil {
 		return nil, fmt.Errorf("error reading bazel_registry.json of local registry at %v: %v", fi.localPath, err)
 	}
 	sourceJSON := sourceJSON{}
-	if err := readAndParseJSON(filepath.Join(fi.localPath, name, version, "source.json"), &sourceJSON); err != nil {
-		return nil, fmt.Errorf("error reading source.json file for %v@%v from local registry at %v: %v", name, version, fi.localPath, err)
+	if err := readAndParseJSON(filepath.Join(fi.localPath, key.Name, key.Version, "source.json"), &sourceJSON); err != nil {
+		return nil, fmt.Errorf("error reading source.json file for %v from local registry at %v: %v", key, fi.localPath, err)
 	}
 	sourceURL, err := urls.Parse(sourceJSON.URL)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing URL of %v@%v from local registry %v: %v", name, version, fi.localPath, err)
+		return nil, fmt.Errorf("error parsing URL of %v from local registry %v: %v", key, fi.localPath, err)
 	}
 	fetcher := &fetch.Archive{
 		// We use the module's name, version, and origin registry as the fingerprint. We don't use things such as
 		// mirrors in the fingerprint since, for example, adding a mirror should not invalidate an existing download.
-		Fingerprint: common.Hash("regModule", name, version, fi.URL()),
+		Fingerprint: common.Hash("regModule", key.Name, key.Version, fi.URL()),
 	}
 	for _, mirror := range bazelRegistryJSON.Mirrors {
 		// TODO: support more sophisticated mirror formats?
@@ -122,16 +122,16 @@ func (fi *FileIndex) GetFetcher(name string, version string) (fetch.Fetcher, err
 	fetcher.StripPrefix = sourceJSON.StripPrefix
 	for _, patchFileName := range sourceJSON.PatchFiles {
 		patchFileURL := *fi.url()
-		patchFileURL.Path = path.Join(patchFileURL.Path, name, version, "patches", patchFileName)
+		patchFileURL.Path = path.Join(patchFileURL.Path, key.Name, key.Version, "patches", patchFileName)
 		fetcher.PatchFiles = append(fetcher.PatchFiles, patchFileURL.String())
 	}
 	// TODO: PatchStrip
 	return fetcher, nil
 }
 
-func (hi *HTTPIndex) GetFetcher(name string, version string) (fetch.Fetcher, error) {
+func (hi *HTTPIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	u := *hi.url
-	u.Path = path.Join(u.Path, name, version, "source.json")
+	u.Path = path.Join(u.Path, key.Name, key.Version, "source.json")
 	panic("implement me")
 }
 

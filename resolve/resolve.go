@@ -3,6 +3,7 @@ package resolve
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"html/template"
 	"io/ioutil"
@@ -43,7 +44,7 @@ func fillModuleData(ctx *context) error {
 	for moduleKey, module := range ctx.depGraph {
 		module.RepoName = moduleKey.Name
 	}
-	rootModule := ctx.depGraph[ModuleKey{ctx.rootModuleName, ""}]
+	rootModule := ctx.depGraph[common.ModuleKey{ctx.rootModuleName, ""}]
 	rootModule.RepoName = ""
 	for repoName, depKey := range rootModule.Deps {
 		ctx.depGraph[depKey].RepoName = repoName
@@ -55,7 +56,7 @@ func fillModuleData(ctx *context) error {
 			continue
 		}
 		var err error
-		module.Fetcher, err = module.Reg.GetFetcher(moduleKey.Name, moduleKey.Version)
+		module.Fetcher, err = module.Reg.GetFetcher(moduleKey)
 		if err != nil {
 			return err
 		}

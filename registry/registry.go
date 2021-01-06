@@ -3,14 +3,15 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	urls "net/url"
 )
 
 type Registry interface {
 	URL() string
-	GetModuleBazel(name string, version string) ([]byte, error)
-	GetFetcher(name string, version string) (fetch.Fetcher, error)
+	GetModuleBazel(key common.ModuleKey) ([]byte, error)
+	GetFetcher(key common.ModuleKey) (fetch.Fetcher, error)
 }
 
 var schemes = make(map[string]func(url *urls.URL) (Registry, error))
@@ -29,16 +30,16 @@ func New(rawurl string) (Registry, error) {
 
 var ErrNotFound = errors.New("module not found")
 
-// Gets the MODULE.bazel file contents for the module with the given `name` and `version`, using the list of
+// Gets the MODULE.bazel file contents for the module with the given key, using the list of
 // registries with an optional override `regOverride` (use empty string for no override).
 // Returns the file contents, and the registry that actually has that module.
-func GetModuleBazel(name string, version string, registries []string, regOverride string) ([]byte, Registry, error) {
+func GetModuleBazel(key common.ModuleKey, registries []string, regOverride string) ([]byte, Registry, error) {
 	if regOverride != "" {
 		reg, err := New(regOverride)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating override registry: %v", err)
 		}
-		moduleBazel, err := reg.GetModuleBazel(name, version)
+		moduleBazel, err := reg.GetModuleBazel(key)
 		return moduleBazel, reg, err
 	}
 
@@ -47,7 +48,7 @@ func GetModuleBazel(name string, version string, registries []string, regOverrid
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating registry from %q: %v", url, err)
 		}
-		moduleBazel, err := reg.GetModuleBazel(name, version)
+		moduleBazel, err := reg.GetModuleBazel(key)
 		if errors.Is(err, ErrNotFound) {
 			continue
 		} else if err != nil {
@@ -57,5 +58,5 @@ func GetModuleBazel(name string, version string, registries []string, regOverrid
 	}
 
 	// The module couldn't be found in any of the registries.
-	return nil, nil, fmt.Errorf("%w: %v@%v", ErrNotFound, name, version)
+	return nil, nil, fmt.Errorf("%w: %v", ErrNotFound, key)
 }

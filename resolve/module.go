@@ -1,26 +1,14 @@
 package resolve
 
 import (
-	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/registry"
 )
 
-type ModuleKey struct {
-	Name    string
-	Version string // empty for modules with LocalPath/URL/Git overrides
-}
-
-func (k *ModuleKey) String() string {
-	if k.Version == "" {
-		return fmt.Sprintf("%v@_", k.Name)
-	}
-	return fmt.Sprintf("%v@%v", k.Name, k.Version)
-}
-
 type Module struct {
 	// Fields from module()
-	Key               ModuleKey
+	Key               common.ModuleKey
 	CompatLevel       int
 	BazelCompat       string
 	ModuleRuleExports string
@@ -28,7 +16,7 @@ type Module struct {
 	ExecPlatforms     []string
 
 	// Deps come from bazel_dep(). The key type is the repo_name
-	Deps map[string]ModuleKey
+	Deps map[string]common.ModuleKey
 
 	// The registry that the module comes from. Can be nil if an override exists
 	Reg registry.Registry
@@ -41,7 +29,7 @@ type Module struct {
 	//tags []Tags
 }
 
-type DepGraph map[ModuleKey]*Module
+type DepGraph map[common.ModuleKey]*Module
 
 /// Overrides
 
