@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"io/ioutil"
 	"path/filepath"
@@ -275,6 +276,7 @@ func getModuleBazel(key ModuleKey, module *Module, overrideSet OverrideSet, regi
 				Integrity:   o.Integrity,
 				StripPrefix: "", // TODO
 				PatchFiles:  o.Patches,
+				Fingerprint: common.Hash("urlOverride", o.URL, o.Patches),
 			}
 		case GitOverride:
 			module.Fetcher = &fetch.Git{
@@ -283,9 +285,15 @@ func getModuleBazel(key ModuleKey, module *Module, overrideSet OverrideSet, regi
 				PatchFiles: o.Patches,
 			}
 		}
-		// Note that we don't fetch the entire module, but only the MODULE.bazel file, which crucially does not have
-		// patches applied. See documentation on the FetchModuleBazel method for more info.
-		return module.Fetcher.FetchModuleBazel()
+		// Fetch the contents of the module to get to the MODULE.bazel file. Note that we specify an empty vendorDir
+		// even if we're in vendoring mode: this is because this module might not end up being selected, in which case
+		// we don't want the module contents cluttering up the vendor directory. Plus, we don't know what the repo name
+		// of this module is!
+		path, err := module.Fetcher.Fetch("")
+		if err != nil {
+			return nil, fmt.Errorf("error fetching module %q with override: %v", key.Name, err)
+		}
+		return ioutil.ReadFile(filepath.Join(path, "MODULE.bazel"))
 	default:
 		// Otherwise, we can directly grab the MODULE.bazel file from the registry.
 		regOverride := ""

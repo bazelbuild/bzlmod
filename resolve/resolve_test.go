@@ -22,28 +22,28 @@ bazel_dep(name="E", version="3.0", repo_name="EfromA")
 	reg.AddModule(t, "B", "1.0", `
 module(name="B", version="1.0")
 bazel_dep(name="D", version="0.1", repo_name="DfromB")
-`, &fetch.Archive{URLs: []string{"B/1.0"}})
+`, &fetch.LocalPath{"B/1.0"})
 	reg.AddModule(t, "C", "2.0", `
 module(name="C", version="2.0")
 bazel_dep(name="D", version="0.2", repo_name="DfromC")
-`, &fetch.Archive{URLs: []string{"C/1.0"}})
+`, &fetch.LocalPath{"C/1.0"})
 	reg.AddModule(t, "D", "0.1", `
 module(name="D", version="0.1")
 bazel_dep(name="F", version="10.0")
-`, &fetch.Archive{URLs: []string{"D/0.1"}})
+`, &fetch.LocalPath{"D/0.1"})
 	reg.AddModule(t, "D", "0.2", `
 module(name="D", version="0.2")
 bazel_dep(name="E", version="2.0")
-`, &fetch.Archive{URLs: []string{"D/0.2"}})
+`, &fetch.LocalPath{"D/0.2"})
 	reg.AddModule(t, "E", "2.0", `
 module(name="E", version="2.0")
-`, &fetch.Archive{URLs: []string{"E/2.0"}})
+`, &fetch.LocalPath{"E/2.0"})
 	reg.AddModule(t, "E", "3.0", `
 module(name="E", version="3.0")
-`, &fetch.Archive{URLs: []string{"E/3.0"}})
+`, &fetch.LocalPath{"E/3.0"})
 	reg.AddModule(t, "F", "10.0", `
 module(name="F", version="10.0")
-`, &fetch.Archive{URLs: []string{"F/10.0"}})
+`, &fetch.LocalPath{"F/10.0"})
 
 	require.NoError(t, Resolve(wsDir, []string{reg.URL()}))
 
@@ -53,49 +53,29 @@ module(name="F", version="10.0")
   "Repos": {
     "BfromA": {
       "Fetcher": {
-        "Archive": {
-          "URLs": [
-            "B/1.0"
-          ],
-          "Integrity": "",
-          "StripPrefix": "",
-          "PatchFiles": null
+        "LocalPath": {
+          "Path": "B/1.0"
         }
       }
     },
     "C": {
       "Fetcher": {
-        "Archive": {
-          "URLs": [
-            "C/1.0"
-          ],
-          "Integrity": "",
-          "StripPrefix": "",
-          "PatchFiles": null
+        "LocalPath": {
+          "Path": "C/1.0"
         }
       }
     },
     "D": {
       "Fetcher": {
-        "Archive": {
-          "URLs": [
-            "D/0.2"
-          ],
-          "Integrity": "",
-          "StripPrefix": "",
-          "PatchFiles": null
+        "LocalPath": {
+          "Path": "D/0.2"
         }
       }
     },
     "EfromA": {
       "Fetcher": {
-        "Archive": {
-          "URLs": [
-            "E/3.0"
-          ],
-          "Integrity": "",
-          "StripPrefix": "",
-          "PatchFiles": null
+        "LocalPath": {
+          "Path": "E/3.0"
         }
       }
     }

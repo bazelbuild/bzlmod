@@ -120,3 +120,31 @@ func (c Checker) Check() bool {
 	}
 	return false
 }
+
+// Reset resets the Checker to its initial state, so that previously written data no longer counts.
+func (c Checker) Reset() {
+	for _, sub := range c {
+		sub.hash.Reset()
+	}
+}
+
+// Generate generates a Subresource Integrity metadata from the given algorithm and byte array.
+// Unrecognized or deprecated algorithms yield an empty string.
+func Generate(algorithm string, bytes []byte) string {
+	algo := algos[algorithm]
+	if algo.priority <= 0 {
+		return ""
+	}
+	h := algo.fn()
+	h.Write(bytes)
+	return algorithm + "-" + base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+// MustGenerate behaves like Generate, except that an unrecognized or deprecated algortihm causes a panic.
+func MustGenerate(algorithm string, bytes []byte) string {
+	s := Generate(algorithm, bytes)
+	if s == "" {
+		panic("unrecognized or deprecated algorithm: " + algorithm)
+	}
+	return s
+}

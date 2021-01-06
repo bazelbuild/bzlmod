@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"io/ioutil"
 	urls "net/url"
@@ -101,7 +102,11 @@ func (fi *FileIndex) GetFetcher(name string, version string) (fetch.Fetcher, err
 	if err != nil {
 		return nil, fmt.Errorf("error parsing URL of %v@%v from local registry %v: %v", name, version, fi.localPath, err)
 	}
-	fetcher := &fetch.Archive{}
+	fetcher := &fetch.Archive{
+		// We use the module's name, version, and origin registry as the fingerprint. We don't use things such as
+		// mirrors in the fingerprint since, for example, adding a mirror should not invalidate an existing download.
+		Fingerprint: common.Hash("regModule", name, version, fi.URL()),
+	}
 	for _, mirror := range bazelRegistryJSON.Mirrors {
 		// TODO: support more sophisticated mirror formats?
 		mirrorURL, err := urls.Parse(mirror)

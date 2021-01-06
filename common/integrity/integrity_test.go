@@ -97,13 +97,17 @@ func TestNoOpIntegrity(t *testing.T) {
 	}
 }
 
-func TestCheckerWrite(t *testing.T) {
+func TestCheckerWriteReset(t *testing.T) {
 	sha512Hash := sha512.Sum512([]byte("this is an example"))
 	checker, err := NewChecker("sha512-" + base64.StdEncoding.EncodeToString(sha512Hash[:]))
 	if assert.NoError(t, err) {
 		_, _ = checker.Write([]byte("this is a"))
 		_, _ = checker.Write([]byte("n exa"))
 		_, _ = checker.Write([]byte("mple"))
+		assert.True(t, checker.Check())
+		checker.Reset()
+		_, _ = checker.Write([]byte("this is an exampl"))
+		_, _ = checker.Write([]byte("e"))
 		assert.True(t, checker.Check())
 	}
 }
@@ -125,4 +129,11 @@ func TestBadIntegrity(t *testing.T) {
 	if err == nil {
 		t.Errorf("parse somehow succeeded for integrity with only deprecated algorithms")
 	}
+}
+
+func TestGenerate(t *testing.T) {
+	assert.Equal(t, "", Generate("crazyalgo", []byte("whatever")))
+	assert.Equal(t, "", Generate("md5", []byte("whatever")))
+	goodHash := sha512.Sum512(payload)
+	assert.Equal(t, "sha512-"+base64.StdEncoding.EncodeToString(goodHash[:]), Generate("sha512", payload))
 }
