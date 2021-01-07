@@ -27,43 +27,40 @@ type Archive struct {
 }
 
 func (a *Archive) Fetch(vendorDir string) (string, error) {
-	// First check if the corresponding shared repo directory already exists. If it does, we can skip the downloading.
+	// If we're in vendoring mode and the vendorDir exists and has the right fingerprint, return immediately.
+	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fingerprint) {
+		return vendorDir, nil
+	}
+
+	// Otherwise, check if the corresponding shared repo directory exists and has the right fingerprint (in which case
+	// we can skip the download).
+	// It might seem redundant to check for the fingerprint as the name of the directory is itself the fingerprint;
+	// however, the fingerprint file is only written if the download, extraction or patching didn't fail halfway.
 	sharedRepoDir, err := SharedRepoDir(a.Fingerprint)
 	if err != nil {
 		return "", err
 	}
-	sharedRepoDirExists := true
-	_, err = os.Stat(sharedRepoDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			sharedRepoDirExists = false
-		} else {
-			return "", fmt.Errorf("can't shared repo directory: %v", err)
-		}
-	}
+	sharedRepoDirReady := verifyFingerprintFile(sharedRepoDir, a.Fingerprint)
 
-	// If we're not in vendoring mode, just download into the shared repo dir if it doesn't exist, and return that
-	// directory.
+	// If we're not in vendoring mode, just prep the shared repo dir if it's not ready, and return that directory.
 	if vendorDir == "" {
-		if !sharedRepoDirExists {
+		if !sharedRepoDirReady {
 			if err := a.downloadExtractAndPatch(sharedRepoDir); err != nil {
 				return "", err
+			}
+			if err := writeFingerprintFile(sharedRepoDir, a.Fingerprint); err != nil {
+				return "", fmt.Errorf("can't write fingerprint file: %v", err)
 			}
 		}
 		return sharedRepoDir, nil
 	}
 
-	// If we're in vendoring mode, also check if the vendorDir exists and whether the fingerprint matches what we
-	// expect.
-	fprintFilePath := filepath.Join(vendorDir, "bzlmod.fingerprint")
-	fprint, err := ioutil.ReadFile(fprintFilePath)
-	if err == nil && string(fprint) == a.Fingerprint {
-		// The vendor directory is properly set up.
-		return vendorDir, nil
-	}
-	if sharedRepoDirExists {
-		// Copy the entire directory over.
-		if err := copyDir(sharedRepoDir, vendorDir); err != nil {
+	// If we're in vendoring mode, we should either copy from the shared repo dir if it's ready, or otherwise download
+	// straight into the vendor dir.
+	if sharedRepoDirReady {
+		// Copy the entire directory over. Note that the fingerprint file itself is explicitly not copied, so that we
+		// only write it in the end if the whole copy succeeded.
+		if err := copyDirWithoutFingerprintFile(sharedRepoDir, vendorDir); err != nil {
 			return "", fmt.Errorf("error copying shared repo dir to vendor dir: %v", err)
 		}
 	} else {
@@ -72,10 +69,19 @@ func (a *Archive) Fetch(vendorDir string) (string, error) {
 		}
 	}
 	// Write the fingerprint file.
-	if err := ioutil.WriteFile(fprintFilePath, []byte(a.Fingerprint), 0766); err != nil {
+	if err := writeFingerprintFile(vendorDir, a.Fingerprint); err != nil {
 		return "", fmt.Errorf("can't write fingerprint file: %v", err)
 	}
 	return vendorDir, nil
+}
+
+func verifyFingerprintFile(dir string, fprint string) bool {
+	actualFprint, err := ioutil.ReadFile(filepath.Join(dir, "bzlmod.fingerprint"))
+	return err == nil && string(actualFprint) == fprint
+}
+
+func writeFingerprintFile(dir string, fprint string) error {
+	return ioutil.WriteFile(filepath.Join(dir, "bzlmod.fingerprint"), []byte(fprint), 0666)
 }
 
 func (a *Archive) downloadExtractAndPatch(destDir string) error {
@@ -179,6 +185,9 @@ func verifyIntegrity(fp string, integ integrities.Checker) error {
 }
 
 func extractZipFile(archivePath string, destDir string, stripPrefix string) error {
+	if err := os.RemoveAll(destDir); err != nil {
+		return err
+	}
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
@@ -208,7 +217,7 @@ func extractZipFile(archivePath string, destDir string, stripPrefix string) erro
 	return nil
 }
 
-func copyDir(from string, to string) error {
+func copyDirWithoutFingerprintFile(from string, to string) error {
 	if err := os.RemoveAll(to); err != nil {
 		return err
 	}
@@ -222,6 +231,10 @@ func copyDir(from string, to string) error {
 		relpath, err := filepath.Rel(from, path)
 		if err != nil {
 			return err
+		}
+		if relpath == "bzlmod.fingerprint" {
+			// skip the fingerprint file itself.
+			return nil
 		}
 		r, err := os.Open(path)
 		if err != nil {

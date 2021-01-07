@@ -6,11 +6,12 @@ import (
 	"github.com/bazelbuild/bzlmod/common/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestArchive_SharedRepoDirExists(t *testing.T) {
+func TestArchive_SharedRepoDirReady(t *testing.T) {
 	testBzlmodDir = t.TempDir()
 	defer func() { testBzlmodDir = "" }()
 	server := testutil.StaticHttpServer(map[string][]byte{}) // deliberately don't serve the "a.zip" that we need
@@ -21,13 +22,47 @@ func TestArchive_SharedRepoDirExists(t *testing.T) {
 		Fingerprint: "some_fingerprint",
 	}
 
-	// As long as the shared repo dir exists (doesn't matter what's in there), we should be happy and not even attempt
-	// the download.
-	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "random_file"), "hi")
+	// If the shared repo dir is ready, we should be happy and not even attempt the download.
+	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "bzlmod.fingerprint"), "some_fingerprint")
 
 	fp, err := a.Fetch("")
 	if assert.NoError(t, err) {
 		assert.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	}
+}
+
+func TestArchive_BadFingerprintInSharedRepoDir(t *testing.T) {
+	testBzlmodDir = t.TempDir()
+	defer func() { testBzlmodDir = "" }()
+
+	zipArchive := testutil.BuildZipArchive(t, map[string][]byte{
+		"file1":     []byte(`file1contents`),
+		"dir/file2": []byte(`file2contents`),
+	})
+	server := testutil.StaticHttpServer(map[string][]byte{
+		"/a.zip": zipArchive,
+	})
+	defer server.Close()
+
+	a := Archive{
+		URLs:        []string{server.URL + "/a.zip"},
+		Integrity:   integrity.MustGenerate("sha256", zipArchive),
+		Fingerprint: "some_fingerprint",
+	}
+
+	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "bzlmod.fingerprint"), "bad_fingerprint")
+	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "random_file"), "kek")
+
+	fp, err := a.Fetch("")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
+	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
+	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
+	// "random_file" should have been deleted.
+	_, err = os.Stat(filepath.Join(fp, "random_file"))
+	if !assert.True(t, os.IsNotExist(err)) {
+		t.Logf("expected NotExist, got: %v", err)
 	}
 }
 
@@ -53,6 +88,7 @@ func TestArchive_GoodContentsInHTTPCache(t *testing.T) {
 	fp, err := a.Fetch("")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
 }
@@ -82,6 +118,7 @@ func TestArchive_BadContentsInHTTPCache(t *testing.T) {
 	fp, err := a.Fetch("")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
 }
@@ -118,6 +155,7 @@ func TestArchive_DownloadCascade(t *testing.T) {
 	fp, err := a.Fetch("")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
 
@@ -176,6 +214,7 @@ func TestArchive_FileScheme(t *testing.T) {
 	fp, err := a.Fetch("")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint"), fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
 }
@@ -224,13 +263,20 @@ func TestArchive_Vendor_BadFingerprint(t *testing.T) {
 	// Create a vendor dir with a bad fingerprint file.
 	vendorDir := filepath.Join(tempDir, "vendor")
 	testutil.WriteFile(t, filepath.Join(vendorDir, "bzlmod.fingerprint"), "oopsie daisie")
+	testutil.WriteFile(t, filepath.Join(vendorDir, "random_file"), "something")
 
 	// We should still fetch it via HTTP.
 	fp, err := a.Fetch(vendorDir)
 	require.NoError(t, err)
 	require.Equal(t, vendorDir, fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
+	// "random_file" should have been deleted.
+	_, err = os.Stat(filepath.Join(fp, "random_file"))
+	if !assert.True(t, os.IsNotExist(err)) {
+		t.Logf("expected NotExist, got: %v", err)
+	}
 }
 
 func TestArchive_Vendor_NoFingerprintFile(t *testing.T) {
@@ -254,14 +300,20 @@ func TestArchive_Vendor_NoFingerprintFile(t *testing.T) {
 
 	// Create a vendor dir without a fingerprint file.
 	vendorDir := filepath.Join(tempDir, "vendor")
-	testutil.WriteFile(t, filepath.Join(vendorDir, "irrelevant.file"), "something")
+	testutil.WriteFile(t, filepath.Join(vendorDir, "random_file"), "something")
 
 	// We should still fetch it via HTTP.
 	fp, err := a.Fetch(vendorDir)
 	require.NoError(t, err)
 	require.Equal(t, vendorDir, fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
+	// "random_file" should have been deleted.
+	_, err = os.Stat(filepath.Join(fp, "random_file"))
+	if !assert.True(t, os.IsNotExist(err)) {
+		t.Logf("expected NotExist, got: %v", err)
+	}
 }
 
 func TestArchive_Vendor_CopyFromSharedRepoDir(t *testing.T) {
@@ -276,15 +328,17 @@ func TestArchive_Vendor_CopyFromSharedRepoDir(t *testing.T) {
 		Fingerprint: "some_fingerprint",
 	}
 
-	// The vendor dir doesn't exist at all. But the shared repo dir exists (doesn't matter what's in there), so we
-	// should be happy to use that, and copy everything over.
+	// The vendor dir doesn't exist at all. But the shared repo dir is ready, so we should be happy to use that, and
+	// copy everything over.
 	vendorDir := filepath.Join(tempDir, "vendor")
+	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "file1"), "file1contents")
 	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "dir", "file2"), "file2contents")
 
 	fp, err := a.Fetch(vendorDir)
 	require.NoError(t, err)
 	require.Equal(t, vendorDir, fp)
+	testutil.AssertFileContents(t, filepath.Join(fp, "bzlmod.fingerprint"), "some_fingerprint")
 	testutil.AssertFileContents(t, filepath.Join(fp, "file1"), "file1contents")
 	testutil.AssertFileContents(t, filepath.Join(fp, "dir", "file2"), "file2contents")
 }
