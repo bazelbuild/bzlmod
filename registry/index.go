@@ -7,74 +7,70 @@ import (
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"io/ioutil"
+	"net/http"
 	urls "net/url"
 	"os"
 	"path"
 	"path/filepath"
 )
 
-type FileIndex struct {
-	localPath string
-}
-
-type HTTPIndex struct {
+type Index struct {
 	url *urls.URL
 }
 
-func NewFileIndex(url *urls.URL) (*FileIndex, error) {
-	if url.Scheme != "file" {
-		return nil, fmt.Errorf("unknown scheme: %v", url.Scheme)
-	}
-	return &FileIndex{filepath.FromSlash(url.Path)}, nil
+func NewIndex(url *urls.URL) (*Index, error) {
+	return &Index{url}, nil
 }
 
-func NewHTTPIndex(url *urls.URL) (*HTTPIndex, error) {
-	switch url.Scheme {
+func (i *Index) URL() string {
+	return i.url.String()
+}
+
+func (i *Index) grabFile(relPath string) ([]byte, error) {
+	switch i.url.Scheme {
+	case "file":
+		p, err := ioutil.ReadFile(filepath.Join(filepath.FromSlash(i.url.Path), filepath.FromSlash(relPath)))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrNotFound
+		}
+		return p, err
 	case "http", "https":
-		return nil, fmt.Errorf("http scheme not implemented yet")
+		url := *i.url
+		url.Path = path.Join(url.Path, relPath)
+		resp, err := http.Get(url.String())
+		if err != nil {
+			return nil, fmt.Errorf("couldn't GET %v: %v", url.String(), err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, ErrNotFound
+		}
+		if resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("couldn't GET %v: got %v", url.String(), resp.Status)
+		}
+		return ioutil.ReadAll(resp.Body)
 	default:
-		return nil, fmt.Errorf("unknown scheme: %v", url.Scheme)
+		return nil, fmt.Errorf("unrecognized scheme: %v", i.url.Scheme)
 	}
 }
 
-func (fi *FileIndex) url() *urls.URL {
-	return &urls.URL{
-		Scheme: "file",
-		Path:   filepath.ToSlash(fi.localPath),
-	}
-}
-
-func (fi *FileIndex) URL() string {
-	return fi.url().String()
-}
-
-func (hi *HTTPIndex) URL() string {
-	return hi.url.String()
-}
-
-func (fi *FileIndex) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
-	bytes, err := ioutil.ReadFile(filepath.Join(fi.localPath, key.Name, key.Version, "MODULE.bazel"))
-	if errors.Is(err, os.ErrNotExist) {
+func (i *Index) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
+	p, err := i.grabFile(path.Join(key.Name, key.Version, "MODULE.bazel"))
+	if errors.Is(err, ErrNotFound) {
 		return nil, fmt.Errorf("%w: %v", ErrNotFound, key)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("error getting MODULE.bazel file for %v: %v", key, err)
 	}
-	return bytes, nil
+	return p, nil
 }
 
-func (hi *HTTPIndex) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
-	u := *hi.url
-	u.Path = path.Join(u.Path, key.Name, key.Version, "MODULE.bazel")
-	panic("implement me")
-}
-
-func readAndParseJSON(filename string, v interface{}) error {
-	bytes, err := ioutil.ReadFile(filename)
+func (i *Index) readAndParseJSON(relPath string, v interface{}) error {
+	p, err := i.grabFile(relPath)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(bytes, v)
+	return json.Unmarshal(p, v)
 }
 
 type bazelRegistryJSON struct {
@@ -89,29 +85,29 @@ type sourceJSON struct {
 	PatchStrip  int      `json:"patch_strip"`
 }
 
-func (fi *FileIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
+func (i *Index) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	bazelRegistryJSON := bazelRegistryJSON{}
-	if err := readAndParseJSON(filepath.Join(fi.localPath, "bazel_registry.json"), &bazelRegistryJSON); err != nil {
-		return nil, fmt.Errorf("error reading bazel_registry.json of local registry at %v: %v", fi.localPath, err)
+	if err := i.readAndParseJSON("bazel_registry.json", &bazelRegistryJSON); err != nil {
+		return nil, fmt.Errorf("error reading bazel_registry.json of registry %v: %v", i.URL(), err)
 	}
 	sourceJSON := sourceJSON{}
-	if err := readAndParseJSON(filepath.Join(fi.localPath, key.Name, key.Version, "source.json"), &sourceJSON); err != nil {
-		return nil, fmt.Errorf("error reading source.json file for %v from local registry at %v: %v", key, fi.localPath, err)
+	if err := i.readAndParseJSON(path.Join(key.Name, key.Version, "source.json"), &sourceJSON); err != nil {
+		return nil, fmt.Errorf("error reading source.json file for %v from registry %v: %v", key, i.URL(), err)
 	}
 	sourceURL, err := urls.Parse(sourceJSON.URL)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing URL of %v from local registry %v: %v", key, fi.localPath, err)
+		return nil, fmt.Errorf("error parsing URL of %v from registry %v: %v", key, i.URL(), err)
 	}
 	fetcher := &fetch.Archive{
 		// We use the module's name, version, and origin registry as the fingerprint. We don't use things such as
 		// mirrors in the fingerprint since, for example, adding a mirror should not invalidate an existing download.
-		Fingerprint: common.Hash("regModule", key.Name, key.Version, fi.URL()),
+		Fingerprint: common.Hash("regModule", key.Name, key.Version, i.URL()),
 	}
 	for _, mirror := range bazelRegistryJSON.Mirrors {
 		// TODO: support more sophisticated mirror formats?
 		mirrorURL, err := urls.Parse(mirror)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing mirror URL %v from local registry %v: %v", mirror, fi.localPath, err)
+			return nil, fmt.Errorf("error parsing mirror URL %v from registry %v: %v", mirror, i.URL(), err)
 		}
 		mirrorURL.Path = path.Join(mirrorURL.Path, sourceURL.Host, sourceURL.Path)
 		mirrorURL.RawQuery = sourceURL.RawQuery
@@ -121,7 +117,7 @@ func (fi *FileIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	fetcher.Integrity = sourceJSON.Integrity
 	fetcher.StripPrefix = sourceJSON.StripPrefix
 	for _, patchFileName := range sourceJSON.PatchFiles {
-		patchFileURL := *fi.url()
+		patchFileURL := *i.url
 		patchFileURL.Path = path.Join(patchFileURL.Path, key.Name, key.Version, "patches", patchFileName)
 		fetcher.PatchFiles = append(fetcher.PatchFiles, patchFileURL.String())
 	}
@@ -129,22 +125,12 @@ func (fi *FileIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	return fetcher, nil
 }
 
-func (hi *HTTPIndex) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
-	u := *hi.url
-	u.Path = path.Join(u.Path, key.Name, key.Version, "source.json")
-	panic("implement me")
-}
-
-func fileIndexScheme(url *urls.URL) (Registry, error) {
-	return NewFileIndex(url)
-}
-
-func httpIndexScheme(url *urls.URL) (Registry, error) {
-	return NewHTTPIndex(url)
+func indexScheme(url *urls.URL) (Registry, error) {
+	return NewIndex(url)
 }
 
 func init() {
-	schemes["http"] = httpIndexScheme
-	schemes["https"] = httpIndexScheme
-	schemes["file"] = fileIndexScheme
+	schemes["http"] = indexScheme
+	schemes["https"] = indexScheme
+	schemes["file"] = indexScheme
 }

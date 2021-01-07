@@ -153,6 +153,9 @@ func cachedDownload(url string, integ integrities.Checker) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("got status: %v", resp.Status)
+	}
 	integ.Reset()
 	if _, err := io.Copy(io.MultiWriter(f, integ), resp.Body); err != nil {
 		return "", err
