@@ -3,6 +3,7 @@ package resolve
 import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
+	integrities "github.com/bazelbuild/bzlmod/common/integrity"
 	"github.com/bazelbuild/bzlmod/fetch"
 	"io/ioutil"
 	"path/filepath"
@@ -23,10 +24,16 @@ type threadState struct {
 	wsSettings  *wsSettings
 }
 
-const localKey = "modulebzl"
+const tstateLocalKey = "module_bazel_tstate"
+
+func initThreadState(t *starlark.Thread) *threadState {
+	tstate := &threadState{overrideSet: OverrideSet{}}
+	t.SetLocal(tstateLocalKey, tstate)
+	return tstate
+}
 
 func getThreadState(t *starlark.Thread) *threadState {
-	return t.Local(localKey).(*threadState)
+	return t.Local(tstateLocalKey).(*threadState)
 }
 
 func noOp(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
@@ -37,7 +44,10 @@ func moduleFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwar
 	if len(args) > 0 {
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
-	module := getThreadState(t).module
+	if getThreadState(t).module != nil {
+		return nil, fmt.Errorf("%v: can only be called once", b.Name())
+	}
+	module := NewModule()
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"name?", &module.Key.Name,
 		"version?", &module.Key.Version,
@@ -49,12 +59,16 @@ func moduleFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwar
 	); err != nil {
 		return nil, err
 	}
+	getThreadState(t).module = module
 	return starlark.None, nil
 }
 
 func wsSettingsFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 {
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
+	}
+	if getThreadState(t).wsSettings != nil {
+		return nil, fmt.Errorf("%v: can only be called once", b.Name())
 	}
 	wsSettings := &wsSettings{}
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
@@ -159,11 +173,7 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	module := &Module{Deps: make(map[string]common.ModuleKey)}
-	thread.SetLocal(localKey, &threadState{
-		module:      module,
-		overrideSet: OverrideSet{},
-	})
+	tstate := initThreadState(thread)
 	firstPassEnv := starlark.StringDict{
 		"module":             moduleBuiltin,
 		"workspace_settings": wsSettingsBuiltin,
@@ -171,36 +181,36 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 		"override_dep":       overrideDepBuiltin,
 	}
 
-	moduleBazelPath := filepath.Join(wsDir, "MODULE.bazel")
-	moduleBazel, err := ioutil.ReadFile(moduleBazelPath)
+	moduleBazel, err := ioutil.ReadFile(filepath.Join(wsDir, "MODULE.bazel"))
 	if err != nil {
 		return nil, err
 	}
-	if _, err = starlark.ExecFile(thread, moduleBazelPath, moduleBazel, firstPassEnv); err != nil {
+	if _, err = starlark.ExecFile(thread, "/MODULE.bazel", moduleBazel, firstPassEnv); err != nil {
 		return nil, err
 	}
 
 	ctx := &context{
-		rootModuleName: module.Key.Name,
+		rootModuleName: tstate.module.Key.Name,
 		depGraph: DepGraph{
-			common.ModuleKey{module.Key.Name, ""}: module,
+			common.ModuleKey{tstate.module.Key.Name, ""}: tstate.module,
 		},
-		overrideSet: getThreadState(thread).overrideSet,
+		overrideSet:          tstate.overrideSet,
+		moduleBazelIntegrity: integrities.MustGenerate("sha256", moduleBazel),
 	}
 	if _, exists := ctx.overrideSet[ctx.rootModuleName]; exists {
 		return nil, fmt.Errorf("invalid override found for root module")
 	}
 	ctx.overrideSet[ctx.rootModuleName] = LocalPathOverride{Path: wsDir}
 
-	if err = processModuleDeps(module, ctx.overrideSet, ctx.depGraph, registries); err != nil {
+	if err = processModuleDeps(tstate.module, ctx.overrideSet, ctx.depGraph, registries); err != nil {
 		return nil, err
 	}
 	return ctx, nil
 }
 
 func processModuleDeps(module *Module, overrideSet OverrideSet, depGraph DepGraph, registries []string) error {
-	// Rewrite the version in `depKey` when there are certain types of
-	// overrides, to make sure that we only discover 1 version of that dep.
+	// Rewrite the version in `depKey` when there are certain types of overrides, to make sure that we only discover 1
+	// version of that dep.
 	for depRepoName, depKey := range module.Deps {
 		switch o := overrideSet[depKey.Name].(type) {
 		case SingleVersionOverride:
@@ -223,9 +233,7 @@ func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph De
 		return nil
 	}
 
-	curModule := &Module{Deps: make(map[string]common.ModuleKey)}
-	depGraph[key] = curModule
-	moduleBazel, err := getModuleBazel(key, curModule, overrideSet, registries)
+	moduleBazelResult, err := getModuleBazel(key, overrideSet, registries)
 	if err != nil {
 		return err
 	}
@@ -234,7 +242,7 @@ func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph De
 		Name:  fmt.Sprintf("discovery[%v]", key),
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	thread.SetLocal(localKey, &threadState{module: curModule, overrideSet: overrideSet})
+	tstate := initThreadState(thread)
 	env := starlark.StringDict{
 		"module":    moduleBuiltin,
 		"bazel_dep": bazelDepBuiltin,
@@ -243,43 +251,56 @@ func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph De
 		"override_dep":       overrideDepNoOp,
 	}
 
-	if _, err = starlark.ExecFile(thread, key.Name+"/MODULE.bazel", moduleBazel, env); err != nil {
+	if _, err = starlark.ExecFile(thread, key.Name+"/MODULE.bazel", moduleBazelResult.moduleBazel, env); err != nil {
 		return err
 	}
 
-	if key.Name != curModule.Key.Name {
-		return fmt.Errorf("the MODULE.bazel file of %v declares a different name (%v)", key.Name, curModule.Key.Name)
+	if tstate.module == nil {
+		return fmt.Errorf("the MODULE.bazel file of %v has no module() directive", key)
 	}
-	if key.Version != "" && key.Version != curModule.Key.Version {
-		return fmt.Errorf("the MODULE.bazel file of %v declares a different version (%v)", key, curModule.Key.Version)
+	if key.Name != tstate.module.Key.Name {
+		return fmt.Errorf("the MODULE.bazel file of %v declares a different name (%v)", key, tstate.module.Key.Name)
 	}
-	if err = processModuleDeps(curModule, overrideSet, depGraph, registries); err != nil {
+	if key.Version != "" && key.Version != tstate.module.Key.Version {
+		return fmt.Errorf("the MODULE.bazel file of %v declares a different version (%v)", key, tstate.module.Key.Version)
+	}
+	tstate.module.Reg = moduleBazelResult.reg
+	tstate.module.Fetcher = moduleBazelResult.fetcher
+	depGraph[key] = tstate.module
+	if err = processModuleDeps(tstate.module, overrideSet, depGraph, registries); err != nil {
 		return err
 	}
 	return nil
 }
 
+type getModuleBazelResult struct {
+	moduleBazel []byte
+	// exactly one of fetcher and reg is nil.
+	reg     registry.Registry
+	fetcher fetch.Fetcher
+}
+
 // getModuleBazel grabs the MODULE.bazel file for the given key, taking into account the appropriate override and the
-// list of registries. In addition to returning the MODULE.bazel file contents or an error, it also writes the
-// appropriate fetcher or registry into the provided `module` variable.
-func getModuleBazel(key common.ModuleKey, module *Module, overrideSet OverrideSet, registries []string) (moduleBazel []byte, err error) {
+// list of registries. In addition to returning the MODULE.bazel file contents or an error, it also returns the origin
+// registry of the module (if the module is from a registry) or the fetcher for the module (if otherwise).
+func getModuleBazel(key common.ModuleKey, overrideSet OverrideSet, registries []string) (result getModuleBazelResult, err error) {
 	override := overrideSet[key.Name]
 	switch override.(type) {
 	case LocalPathOverride, URLOverride, GitOverride:
 		// For these overrides, there's no registry involved; we can concoct our own fetcher.
 		switch o := override.(type) {
 		case LocalPathOverride:
-			module.Fetcher = &fetch.LocalPath{Path: o.Path}
+			result.fetcher = &fetch.LocalPath{Path: o.Path}
 		case URLOverride:
-			module.Fetcher = &fetch.Archive{
+			result.fetcher = &fetch.Archive{
 				URLs:        []string{o.URL},
 				Integrity:   o.Integrity,
 				StripPrefix: "", // TODO
 				PatchFiles:  o.Patches,
-				Fingerprint: common.Hash("urlOverride", o.URL, o.Patches),
+				Fprint:      common.Hash("urlOverride", o.URL, o.Patches),
 			}
 		case GitOverride:
-			module.Fetcher = &fetch.Git{
+			result.fetcher = &fetch.Git{
 				Repo:       o.Repo,
 				Commit:     o.Commit,
 				PatchFiles: o.Patches,
@@ -289,11 +310,14 @@ func getModuleBazel(key common.ModuleKey, module *Module, overrideSet OverrideSe
 		// even if we're in vendoring mode: this is because this module might not end up being selected, in which case
 		// we don't want the module contents cluttering up the vendor directory. Plus, we don't know what the repo name
 		// of this module is!
-		path, err := module.Fetcher.Fetch("")
+		var path string
+		path, err = result.fetcher.Fetch("")
 		if err != nil {
-			return nil, fmt.Errorf("error fetching module %q with override: %v", key.Name, err)
+			err = fmt.Errorf("error fetching module %q with override: %v", key.Name, err)
+			return
 		}
-		return ioutil.ReadFile(filepath.Join(path, "MODULE.bazel"))
+		result.moduleBazel, err = ioutil.ReadFile(filepath.Join(path, "MODULE.bazel"))
+		return
 	default:
 		// Otherwise, we can directly grab the MODULE.bazel file from the registry.
 		regOverride := ""
@@ -305,7 +329,7 @@ func getModuleBazel(key common.ModuleKey, module *Module, overrideSet OverrideSe
 		case RegistryOverride:
 			regOverride = o.Registry
 		}
-		moduleBazel, module.Reg, err = registry.GetModuleBazel(key, registries, regOverride)
+		result.moduleBazel, result.reg, err = registry.GetModuleBazel(key, registries, regOverride)
 		return
 	}
 }

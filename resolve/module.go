@@ -29,6 +29,10 @@ type Module struct {
 	//tags []Tags
 }
 
+func NewModule() *Module {
+	return &Module{Deps: make(map[string]common.ModuleKey)}
+}
+
 type DepGraph map[common.ModuleKey]*Module
 
 /// Overrides

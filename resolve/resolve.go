@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
+	"github.com/bazelbuild/bzlmod/lockfile"
 	"html/template"
 	"io/ioutil"
 	"os"
@@ -12,9 +13,10 @@ import (
 )
 
 type context struct {
-	rootModuleName string
-	depGraph       DepGraph
-	overrideSet    OverrideSet
+	rootModuleName       string
+	depGraph             DepGraph
+	overrideSet          OverrideSet
+	moduleBazelIntegrity string
 }
 
 func Resolve(wsDir string, registries []string) error {
@@ -66,25 +68,18 @@ func fillModuleData(ctx *context) error {
 }
 
 func writeLockFile(wsDir string, ctx *context) error {
-	// TODO: Move lockfile struct definitions into a new module.
-	type Repo struct {
-		Fetcher fetch.Wrapper
-	}
-	type LockFile struct {
-		Repos map[string]Repo
-	}
-	l := LockFile{Repos: make(map[string]Repo)}
+	ws := lockfile.NewWorkspace()
 
 	for _, module := range ctx.depGraph {
 		if module.RepoName == "" {
 			continue
 		}
-		l.Repos[module.RepoName] = Repo{
+		ws.Repos[module.RepoName] = lockfile.Repo{
 			Fetcher: fetch.Wrap(module.Fetcher),
 		}
 	}
 
-	bytes, err := json.MarshalIndent(l, "", "  ")
+	bytes, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -119,7 +114,7 @@ func writeWorkspaceFile(wsDir string, ctx *context) error {
 		Repos     map[string]repoData
 	}{
 		WsName:    ctx.rootModuleName,
-		Integrity: "sha256-fakevalue", // TODO
+		Integrity: ctx.moduleBazelIntegrity,
 		Repos:     make(map[string]repoData),
 	}
 
@@ -130,7 +125,7 @@ func writeWorkspaceFile(wsDir string, ctx *context) error {
 		}
 		repoDeps := make(map[string]string)
 		data.Repos[module.RepoName] = repoData{
-			Fingerprint: "fakefingerprint", // TODO
+			Fingerprint: module.Fetcher.Fingerprint(),
 			Deps:        repoDeps,
 		}
 		for depRepoName, depKey := range module.Deps {

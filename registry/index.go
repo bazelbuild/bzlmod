@@ -101,7 +101,7 @@ func (i *Index) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	fetcher := &fetch.Archive{
 		// We use the module's name, version, and origin registry as the fingerprint. We don't use things such as
 		// mirrors in the fingerprint since, for example, adding a mirror should not invalidate an existing download.
-		Fingerprint: common.Hash("regModule", key.Name, key.Version, i.URL()),
+		Fprint: common.Hash("regModule", key.Name, key.Version, i.URL()),
 	}
 	for _, mirror := range bazelRegistryJSON.Mirrors {
 		// TODO: support more sophisticated mirror formats?

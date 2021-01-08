@@ -21,14 +21,19 @@ type Archive struct {
 	StripPrefix string
 	PatchFiles  []string
 
-	// Fingerprint should be a hash computed from information that is enough to distinguish this archive fetch from
+	// Fprint should be a hash computed from information that is enough to distinguish this archive fetch from
 	// others. It will be used as the name of the shared repo directory.
-	Fingerprint string
+	// The field is not called Fingerprint to avoid conflict with the method name.
+	Fprint string
+}
+
+func (a *Archive) Fingerprint() string {
+	return a.Fprint
 }
 
 func (a *Archive) Fetch(vendorDir string) (string, error) {
 	// If we're in vendoring mode and the vendorDir exists and has the right fingerprint, return immediately.
-	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fingerprint) {
+	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fprint) {
 		return vendorDir, nil
 	}
 
@@ -36,11 +41,11 @@ func (a *Archive) Fetch(vendorDir string) (string, error) {
 	// we can skip the download).
 	// It might seem redundant to check for the fingerprint as the name of the directory is itself the fingerprint;
 	// however, the fingerprint file is only written if the download, extraction or patching didn't fail halfway.
-	sharedRepoDir, err := SharedRepoDir(a.Fingerprint)
+	sharedRepoDir, err := SharedRepoDir(a.Fprint)
 	if err != nil {
 		return "", err
 	}
-	sharedRepoDirReady := verifyFingerprintFile(sharedRepoDir, a.Fingerprint)
+	sharedRepoDirReady := verifyFingerprintFile(sharedRepoDir, a.Fprint)
 
 	// If we're not in vendoring mode, just prep the shared repo dir if it's not ready, and return that directory.
 	if vendorDir == "" {
@@ -48,7 +53,7 @@ func (a *Archive) Fetch(vendorDir string) (string, error) {
 			if err := a.downloadExtractAndPatch(sharedRepoDir); err != nil {
 				return "", err
 			}
-			if err := writeFingerprintFile(sharedRepoDir, a.Fingerprint); err != nil {
+			if err := writeFingerprintFile(sharedRepoDir, a.Fprint); err != nil {
 				return "", fmt.Errorf("can't write fingerprint file: %v", err)
 			}
 		}
@@ -69,7 +74,7 @@ func (a *Archive) Fetch(vendorDir string) (string, error) {
 		}
 	}
 	// Write the fingerprint file.
-	if err := writeFingerprintFile(vendorDir, a.Fingerprint); err != nil {
+	if err := writeFingerprintFile(vendorDir, a.Fprint); err != nil {
 		return "", fmt.Errorf("can't write fingerprint file: %v", err)
 	}
 	return vendorDir, nil

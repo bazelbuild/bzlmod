@@ -12,3 +12,7 @@ type Git struct {
 func (g *Git) Fetch(vendorDir string) (string, error) {
 	return "", fmt.Errorf("git fetch unimplemented")
 }
+
+func (g *Git) Fingerprint() string {
+	return "TODO" // TODO
+}

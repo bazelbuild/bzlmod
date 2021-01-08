@@ -17,9 +17,9 @@ func TestArchive_SharedRepoDirReady(t *testing.T) {
 	server := testutil.StaticHttpServer(map[string][]byte{}) // deliberately don't serve the "a.zip" that we need
 	defer server.Close()
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   "",
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: "",
+		Fprint:    "some_fingerprint",
 	}
 
 	// If the shared repo dir is ready, we should be happy and not even attempt the download.
@@ -45,9 +45,9 @@ func TestArchive_BadFingerprintInSharedRepoDir(t *testing.T) {
 	defer server.Close()
 
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   integrity.MustGenerate("sha256", zipArchive),
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: integrity.MustGenerate("sha256", zipArchive),
+		Fprint:    "some_fingerprint",
 	}
 
 	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "shared_repos", "some_fingerprint", "bzlmod.fingerprint"), "bad_fingerprint")
@@ -78,9 +78,9 @@ func TestArchive_GoodContentsInHTTPCache(t *testing.T) {
 	})
 
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   integrity.MustGenerate("sha256", zipArchive),
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: integrity.MustGenerate("sha256", zipArchive),
+		Fprint:    "some_fingerprint",
 	}
 
 	testutil.WriteFileBytes(t, filepath.Join(testBzlmodDir, "http_cache", common.Hash(server.URL+"/a.zip")), zipArchive)
@@ -107,9 +107,9 @@ func TestArchive_BadContentsInHTTPCache(t *testing.T) {
 	defer server.Close()
 
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   integrity.MustGenerate("sha256", zipArchive),
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: integrity.MustGenerate("sha256", zipArchive),
+		Fprint:    "some_fingerprint",
 	}
 
 	testutil.WriteFile(t, filepath.Join(testBzlmodDir, "http_cache", common.Hash(server.URL+"/a.zip")),
@@ -148,8 +148,8 @@ func TestArchive_DownloadCascade(t *testing.T) {
 			server.URL + "/good.zip",         // good! chosen
 			server.URL + "/another/good.zip", // also good (also passes integrity), but test that this is _not_ used
 		},
-		Integrity:   integrity.MustGenerate("sha256", zipArchive) + " " + integrity.MustGenerate("sha256", anotherZipArchive),
-		Fingerprint: "some_fingerprint",
+		Integrity: integrity.MustGenerate("sha256", zipArchive) + " " + integrity.MustGenerate("sha256", anotherZipArchive),
+		Fprint:    "some_fingerprint",
 	}
 
 	fp, err := a.Fetch("")
@@ -181,8 +181,8 @@ func TestArchive_DownloadFails(t *testing.T) {
 			server.URL + "/nonexistent.zip", // 404
 			"gopher://something",            // unrecognized scheme
 		},
-		Integrity:   integrity.MustGenerate("sha256", []byte(`fail the integrity check!`)),
-		Fingerprint: "some_fingerprint",
+		Integrity: integrity.MustGenerate("sha256", []byte(`fail the integrity check!`)),
+		Fprint:    "some_fingerprint",
 	}
 
 	_, err := a.Fetch("")
@@ -207,8 +207,8 @@ func TestArchive_FileScheme(t *testing.T) {
 			"file://" + filepath.ToSlash(filepath.Join(tempDir, "nonexistent.zip")), // nonexistent
 			"file://" + filepath.ToSlash(filepath.Join(tempDir, "good.zip")),
 		},
-		Integrity:   integrity.MustGenerate("sha256", zipArchive),
-		Fingerprint: "some_fingerprint",
+		Integrity: integrity.MustGenerate("sha256", zipArchive),
+		Fprint:    "some_fingerprint",
 	}
 
 	fp, err := a.Fetch("")
@@ -226,9 +226,9 @@ func TestArchive_Vendor_VendorDirReady(t *testing.T) {
 	server := testutil.StaticHttpServer(map[string][]byte{}) // deliberately don't serve the "a.zip" that we need
 	defer server.Close()
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   "",
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: "",
+		Fprint:    "some_fingerprint",
 	}
 
 	// Create a vendor dir with a matching fingerprint file.
@@ -255,9 +255,9 @@ func TestArchive_Vendor_BadFingerprint(t *testing.T) {
 	})
 	defer server.Close()
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   "",
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: "",
+		Fprint:    "some_fingerprint",
 	}
 
 	// Create a vendor dir with a bad fingerprint file.
@@ -293,9 +293,9 @@ func TestArchive_Vendor_NoFingerprintFile(t *testing.T) {
 	})
 	defer server.Close()
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   "",
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: "",
+		Fprint:    "some_fingerprint",
 	}
 
 	// Create a vendor dir without a fingerprint file.
@@ -323,9 +323,9 @@ func TestArchive_Vendor_CopyFromSharedRepoDir(t *testing.T) {
 	server := testutil.StaticHttpServer(map[string][]byte{}) // deliberately don't serve the "a.zip" that we need
 	defer server.Close()
 	a := Archive{
-		URLs:        []string{server.URL + "/a.zip"},
-		Integrity:   "",
-		Fingerprint: "some_fingerprint",
+		URLs:      []string{server.URL + "/a.zip"},
+		Integrity: "",
+		Fprint:    "some_fingerprint",
 	}
 
 	// The vendor dir doesn't exist at all. But the shared repo dir is ready, so we should be happy to use that, and

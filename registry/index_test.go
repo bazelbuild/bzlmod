@@ -103,7 +103,7 @@ func TestIndex_GetFetcher(t *testing.T) {
 				},
 				Integrity:   "sha256-blah",
 				StripPrefix: "pref",
-				Fingerprint: common.Hash("regModule", "A", "1.0", reg.URL()),
+				Fprint:      common.Hash("regModule", "A", "1.0", reg.URL()),
 			}, fetcher, reg.URL())
 		}
 
@@ -120,7 +120,7 @@ func TestIndex_GetFetcher(t *testing.T) {
 					reg.URL() + "/A/2.0/patches/1-fix-this.patch",
 					reg.URL() + "/A/2.0/patches/2-fix-that.patch",
 				},
-				Fingerprint: common.Hash("regModule", "A", "2.0", reg.URL()),
+				Fprint: common.Hash("regModule", "A", "2.0", reg.URL()),
 			}, fetcher, reg.URL())
 		}
 
@@ -132,8 +132,8 @@ func TestIndex_GetFetcher(t *testing.T) {
 					"file:///home/bazel/mymirror/example.com/archive.jar?with=query",
 					"https://example.com/archive.jar?with=query",
 				},
-				Integrity:   "sha256-bluh",
-				Fingerprint: common.Hash("regModule", "B", "1.0", reg.URL()),
+				Integrity: "sha256-bluh",
+				Fprint:    common.Hash("regModule", "B", "1.0", reg.URL()),
 			}, fetcher, reg.URL())
 		}
 	}
