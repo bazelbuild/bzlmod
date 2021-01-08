@@ -148,16 +148,18 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
 	var (
-		moduleName            string
-		version               string
-		localPath             string
-		git                   string
-		commit                string
-		url                   string
-		integrity             string
-		reg                   string
-		patchFiles            []string
-		allowMultipleVersions []string
+		moduleName                string
+		version                   string
+		localPath                 string
+		git                       string
+		commit                    string
+		url                       string
+		integrity                 string
+		reg                       string
+		patchFilesList            *starlark.List
+		allowMultipleVersionsList *starlark.List
+		patchFiles                []string
+		allowMultipleVersions     []string
 	)
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"module_name", &moduleName,
@@ -167,15 +169,23 @@ func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		"commit?", &commit,
 		"url?", &url,
 		"integrity?", &integrity,
-		"reg?", &reg,
-		"patch_files?", &patchFiles,
-		"allow_multiple_versions?", &allowMultipleVersions,
+		"registry?", &reg,
+		"patch_files?", &patchFilesList,
+		"allow_multiple_versions?", &allowMultipleVersionsList,
 	); err != nil {
 		return nil, err
 	}
 	overrideSet := getThreadState(t).overrideSet
 	if _, hasKey := overrideSet[moduleName]; hasKey {
 		return nil, fmt.Errorf("override_dep called twice on the same module %v", moduleName)
+	}
+	allowMultipleVersions, err := extractStringSlice(allowMultipleVersionsList)
+	if err != nil {
+		return nil, err
+	}
+	patchFiles, err = extractStringSlice(patchFilesList)
+	if err != nil {
+		return nil, err
 	}
 	if version != "" {
 		overrideSet[moduleName] = SingleVersionOverride{Version: version, Registry: reg, Patches: patchFiles}

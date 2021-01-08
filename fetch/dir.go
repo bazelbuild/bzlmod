@@ -6,11 +6,17 @@ import (
 	"path/filepath"
 )
 
-var testBzlmodDir = ""
+// TestBzlmodDir can be set in order to override the normal bzlmod cache dir for testing. Usage:
+//   func TestSomething(t *testing.T) {
+//     fetch.TestBzlmodDir = t.TempDir()
+//     defer func() { fetch.TestBzlmodDir = "" }()
+//     ...
+//   }
+var TestBzlmodDir = ""
 
 func BzlmodDir() (string, error) {
-	if testBzlmodDir != "" {
-		return testBzlmodDir, nil
+	if TestBzlmodDir != "" {
+		return TestBzlmodDir, nil
 	}
 	cache, err := os.UserCacheDir()
 	if err != nil {
