@@ -15,36 +15,74 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
-
+	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/spf13/cobra"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
-// fetchCmd represents the fetch command
-var fetchCmd = &cobra.Command{
-	Use:   "fetch",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+func init() {
+	var fetchAll bool
+	fetchCmd := &cobra.Command{
+		Use:   "fetch <repo> [<repo2> ...]",
+		Short: "Fetches the given repo(s)",
+		Long: `Fetches the given repo(s) onto local disk. If the fetch is successful, the path
+to the directory where the fetched contents reside will be written to stdout.
+If only 1 repo was requested to be fetched, the path is simply written out;
+otherwise, the output will be multiple lines, each in the format of
+"<repoName> <repoPath>" (without quotes).`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := runFetch(fetchAll, args); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Error: %v", err)
+			}
+		},
+	}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("fetch called")
-	},
+	rootCmd.AddCommand(fetchCmd)
+	fetchCmd.Flags().BoolVar(&fetchAll, "all", false, `Fetch all known repos.`)
 }
 
-func init() {
-	rootCmd.AddCommand(fetchCmd)
+func runFetch(fetchAll bool, repos []string) error {
+	p, err := ioutil.ReadFile(lockfile.FileName)
+	if err != nil {
+		return err
+	}
+	ws := lockfile.NewWorkspace()
+	err = json.Unmarshal(p, ws)
+	if err != nil {
+		return err
+	}
+	if fetchAll {
+		for name, repo := range ws.Repos {
+			err = singleFetch(name, repo, ws, true)
+		}
+	} else {
+		for _, name := range repos {
+			repo := ws.Repos[name]
+			if repo == nil {
+				return fmt.Errorf("unknown repo: %v", name)
+			}
+			err = singleFetch(name, repo, ws, len(repos) > 1)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// fetchCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// fetchCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+func singleFetch(name string, repo *lockfile.Repo, ws *lockfile.Workspace, writeName bool) error {
+	path, err := repo.Fetcher.Fetch(filepath.Join(ws.VendorDir, name))
+	if err != nil {
+		return fmt.Errorf("error fetching repo %v: %v", name, err)
+	}
+	if writeName {
+		fmt.Printf("%v %v\n", name, path)
+	} else {
+		fmt.Println(path)
+	}
+	return nil
 }

@@ -48,7 +48,7 @@ func TestSelection_SimpleDiamond(t *testing.T) {
 		depGraph:       depGraph,
 		overrideSet:    OverrideSet{},
 	}
-	require.NoError(t, Selection(ctx))
+	require.NoError(t, runSelection(ctx))
 	expectedDepGraph := DepGraph{
 		common.ModuleKey{"A", ""}: &Module{
 			Key: common.ModuleKey{"A", "1.0"},

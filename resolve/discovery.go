@@ -18,6 +18,26 @@ type wsSettings struct {
 	registries []string
 }
 
+// Merges all given wsSettings objects, in ascending order of priority (later trumps earlier).
+func mergeWsSettings(settings ...*wsSettings) *wsSettings {
+	merged := &wsSettings{
+		vendorDir:  "",
+		registries: []string{"https://bcr.bazel.build/"}, // TODO: make this default a constant?
+	}
+	for _, next := range settings {
+		if next == nil {
+			continue
+		}
+		if next.vendorDir != "" {
+			merged.vendorDir = next.vendorDir
+		}
+		if len(next.registries) > 0 {
+			merged.registries = next.registries
+		}
+	}
+	return merged
+}
+
 type threadState struct {
 	module      *Module
 	overrideSet OverrideSet
@@ -34,6 +54,21 @@ func initThreadState(t *starlark.Thread) *threadState {
 
 func getThreadState(t *starlark.Thread) *threadState {
 	return t.Local(tstateLocalKey).(*threadState)
+}
+
+func extractStringSlice(list *starlark.List) ([]string, error) {
+	if list == nil {
+		return nil, nil
+	}
+	var r []string
+	for i := 0; i < list.Len(); i++ {
+		s, ok := starlark.AsString(list.Index(i))
+		if !ok {
+			return nil, fmt.Errorf("got %v, want string", list.Index(i).Type())
+		}
+		r = append(r, s)
+	}
+	return r, nil
 }
 
 func noOp(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
@@ -71,10 +106,16 @@ func wsSettingsFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, 
 		return nil, fmt.Errorf("%v: can only be called once", b.Name())
 	}
 	wsSettings := &wsSettings{}
+	var registries *starlark.List
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"vendor_dir?", &wsSettings.vendorDir,
-		"registries?", &wsSettings.registries,
+		"registries?", &registries,
 	); err != nil {
+		return nil, err
+	}
+	var err error
+	wsSettings.registries, err = extractStringSlice(registries)
+	if err != nil {
 		return nil, err
 	}
 	getThreadState(t).wsSettings = wsSettings
@@ -168,7 +209,7 @@ var (
 // bazel_deps.
 // `wsDir` is the workspace directory, and `registries` is the list of registries to use (takes precedence
 // over the registries specified in `workspace_settings`).
-func Discovery(wsDir string, registries []string) (*context, error) {
+func runDiscovery(wsDir string, vendorDir string, registries []string) (*context, error) {
 	thread := &starlark.Thread{
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
@@ -189,6 +230,10 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 		return nil, err
 	}
 
+	wsSettings := mergeWsSettings(tstate.wsSettings, &wsSettings{
+		vendorDir:  vendorDir,
+		registries: registries,
+	})
 	ctx := &context{
 		rootModuleName: tstate.module.Key.Name,
 		depGraph: DepGraph{
@@ -196,13 +241,14 @@ func Discovery(wsDir string, registries []string) (*context, error) {
 		},
 		overrideSet:          tstate.overrideSet,
 		moduleBazelIntegrity: integrities.MustGenerate("sha256", moduleBazel),
+		vendorDir:            wsSettings.vendorDir,
 	}
 	if _, exists := ctx.overrideSet[ctx.rootModuleName]; exists {
 		return nil, fmt.Errorf("invalid override found for root module")
 	}
 	ctx.overrideSet[ctx.rootModuleName] = LocalPathOverride{Path: wsDir}
 
-	if err = processModuleDeps(tstate.module, ctx.overrideSet, ctx.depGraph, registries); err != nil {
+	if err = processModuleDeps(tstate.module, ctx.overrideSet, ctx.depGraph, wsSettings.registries); err != nil {
 		return nil, err
 	}
 	return ctx, nil

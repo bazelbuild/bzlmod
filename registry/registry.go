@@ -58,5 +58,5 @@ func GetModuleBazel(key common.ModuleKey, registries []string, regOverride strin
 	}
 
 	// The module couldn't be found in any of the registries.
-	return nil, nil, fmt.Errorf("%w: %v", ErrNotFound, key)
+	return nil, nil, fmt.Errorf("%w: %v in registries %q", ErrNotFound, key, registries)
 }

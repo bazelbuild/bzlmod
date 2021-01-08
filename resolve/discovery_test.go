@@ -7,11 +7,12 @@ import (
 	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"path/filepath"
 	"testing"
 )
 
-func TestSimpleDiamond(t *testing.T) {
+func TestDiscovery_SimpleDiamond(t *testing.T) {
 	wsDir := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
 module(name="A")
@@ -31,7 +32,7 @@ bazel_dep(name="D", version="0.1")
 module(name="D", version="0.1")
 `, nil)
 
-	v, err := Discovery(wsDir, []string{reg.URL()})
+	v, err := runDiscovery(wsDir, "", []string{reg.URL()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,41 @@ module(name="D", version="0.1")
 	}, v.depGraph)
 }
 
-func TestLocalPathOverride(t *testing.T) {
+func TestDiscovery_RegistriesFlag(t *testing.T) {
+	wsDir := t.TempDir()
+	f1 := registry.NewFake("1")
+	f2 := registry.NewFake("2")
+	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), fmt.Sprintf(`
+module(name="A")
+bazel_dep(name="B", version="1.0")
+workspace_settings(registries=["%v"])
+`, f1.URL()))
+	f1.AddModule(t, "B", "1.0", `
+module(name="B", version="1.0")
+bazel_dep(name="C", version="1.0")
+`, nil)
+	f1.AddModule(t, "C", "1.0", `module(name="C", version="1.0")`, nil)
+
+	f2.AddModule(t, "B", "1.0", `
+module(name="B", version="1.0")
+bazel_dep(name="C", version="2.0")
+`, nil)
+	f2.AddModule(t, "C", "2.0", `module(name="C", version="2.0")`, nil)
+
+	v, err := runDiscovery(wsDir, "", nil)
+	if assert.NoError(t, err) {
+		assert.Contains(t, v.depGraph, common.ModuleKey{"C", "1.0"})
+		assert.NotContains(t, v.depGraph, common.ModuleKey{"C", "2.0"})
+	}
+
+	v, err = runDiscovery(wsDir, "", []string{f2.URL()})
+	if assert.NoError(t, err) {
+		assert.Contains(t, v.depGraph, common.ModuleKey{"C", "2.0"})
+		assert.NotContains(t, v.depGraph, common.ModuleKey{"C", "1.0"})
+	}
+}
+
+func TestDiscovery_LocalPathOverride(t *testing.T) {
 	wsDir := t.TempDir()
 	wsDirA := filepath.Join(wsDir, "A")
 	wsDirB := filepath.Join(wsDir, "B")
@@ -84,10 +119,8 @@ module(name="B", version="not-sure-yet")
 module(name="B", version="1.0")
 `, nil)
 
-	v, err := Discovery(wsDirA, []string{reg.URL()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	v, err := runDiscovery(wsDirA, "", []string{reg.URL()})
+	require.NoError(t, err)
 	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{
 		"A": LocalPathOverride{Path: wsDirA},

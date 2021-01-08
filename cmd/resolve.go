@@ -22,30 +22,29 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveCmd represents the resolve command
-var resolveCmd = &cobra.Command{
-	Use:   "resolve",
-	Short: "Resolves dependencies and outputs a WORKSPACE file for Bazel",
-	Long: `Sets up the current Bazel workspace by reading the MODULE.bazel file,
-resolving transitive dependencies, and outputting a WORKSPACE file.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("resolve called")
-		if err := resolve.Resolve(".", nil); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error: %v", err)
-		}
-	},
-}
-
 func init() {
+	var vendorDir string
+	var registries []string
+
+	resolveCmd := &cobra.Command{
+		Use:   "resolve",
+		Short: "Resolves dependencies and outputs a WORKSPACE file for Bazel",
+		Long: `Sets up the current Bazel workspace by reading the MODULE.bazel file,
+resolving transitive dependencies, and outputting a WORKSPACE file.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := resolve.Resolve(".", vendorDir, registries); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Error: %v", err)
+			}
+		},
+	}
+
 	rootCmd.AddCommand(resolveCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// resolveCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// resolveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	resolveCmd.Flags().StringVar(&vendorDir, "vendor_dir", "",
+		`Specifies that dependencies should be "vendored" -- that is, ready to be
+checked into source control. The value of this flag should be the name of the
+directory under the workspace root where vendored dependencies are expected
+to be placed.`)
+	resolveCmd.Flags().StringSliceVar(&registries, "registries", nil,
+		`The list of Bazel registries to pull dependencies from. Earlier registries have
+higher priority.`)
 }

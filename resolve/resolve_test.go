@@ -46,7 +46,7 @@ module(name="E", version="3.0")
 module(name="F", version="10.0")
 `, &fetch.LocalPath{"F/10.0"})
 
-	require.NoError(t, Resolve(wsDir, []string{reg.URL()}))
+	require.NoError(t, Resolve(wsDir, "", []string{reg.URL()}))
 
 	lockFile, err := ioutil.ReadFile(filepath.Join(wsDir, "bzlmod.lock"))
 	if assert.NoError(t, err) {

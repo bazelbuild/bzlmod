@@ -34,7 +34,7 @@ func (a *Archive) Fingerprint() string {
 func (a *Archive) Fetch(vendorDir string) (string, error) {
 	// If we're in vendoring mode and the vendorDir exists and has the right fingerprint, return immediately.
 	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fprint) {
-		return vendorDir, nil
+		return filepath.Abs(vendorDir)
 	}
 
 	// Otherwise, check if the corresponding shared repo directory exists and has the right fingerprint (in which case
@@ -77,7 +77,7 @@ func (a *Archive) Fetch(vendorDir string) (string, error) {
 	if err := writeFingerprintFile(vendorDir, a.Fprint); err != nil {
 		return "", fmt.Errorf("can't write fingerprint file: %v", err)
 	}
-	return vendorDir, nil
+	return filepath.Abs(vendorDir)
 }
 
 func verifyFingerprintFile(dir string, fprint string) bool {
