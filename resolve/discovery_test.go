@@ -114,7 +114,7 @@ func TestDiscovery_LocalPathOverride(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(wsDirA, "MODULE.bazel"), fmt.Sprintf(`
 module(name="A")
 bazel_dep(name="B", version="1.0")
-override_dep(module_name="B", local_path="%v")
+override_dep(module_name="B", override=local_path_override(path="%v"))
 `, wsDirB))
 	testutil.WriteFile(t, filepath.Join(wsDirB, "MODULE.bazel"), `
 module(name="B", version="not-sure-yet")
@@ -146,7 +146,7 @@ module(name="B", version="1.0")
 	}, v.depGraph)
 }
 
-func TestDiscovery_URLOverride(t *testing.T) {
+func TestDiscovery_ArchiveOverride(t *testing.T) {
 	fetch.TestBzlmodDir = t.TempDir()
 	defer func() { fetch.TestBzlmodDir = "" }()
 
@@ -178,7 +178,7 @@ bazel_dep(name="D", version="1.0")
 	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), fmt.Sprintf(`
 module(name="A")
 bazel_dep(name="B", version="1.0")
-override_dep(module_name="B", url="%v/b.zip", integrity="%v")
+override_dep(module_name="B", override=archive_override(url="%v/b.zip", integrity="%v"))
 `, server.URL, zipIntegrity))
 
 	v, err := runDiscovery(wsDir, "", []string{reg.URL()})
@@ -186,7 +186,7 @@ override_dep(module_name="B", url="%v/b.zip", integrity="%v")
 	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{
 		"A": LocalPathOverride{Path: wsDir},
-		"B": URLOverride{
+		"B": ArchiveOverride{
 			URL:       server.URL + "/b.zip",
 			Integrity: zipIntegrity,
 		},
@@ -224,7 +224,13 @@ func TestDiscovery_SingleVersionOverride(t *testing.T) {
 	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
 module(name="A")
 bazel_dep(name="B", version="3.0")
-override_dep(module_name="B", version="1.0", patch_files=["http://patches.com/patch1","http://patches.com/patch2"])
+override_dep(
+  module_name="B",
+  override=single_version_override(
+    version="1.0",
+    patch_files=["http://patches.com/patch1","http://patches.com/patch2"],
+  ),
+)
 `)
 	reg := registry.NewFake("fake")
 	reg.AddModule(t, "B", "1.0", `
@@ -271,7 +277,7 @@ module(name="B", version="4.0")
 module(name="A")
 bazel_dep(name="B", version="3.0", repo_name="B3")
 bazel_dep(name="B", version="4.0", repo_name="B4")
-override_dep(module_name="B", allow_multiple_versions=["3.3", "4.4"], registry="%v")
+override_dep(module_name="B", override=multiple_version_override(versions=["3.3", "4.4"], registry="%v"))
 `, reg.URL()))
 
 	v, err := runDiscovery(wsDir, "", nil)
@@ -279,7 +285,7 @@ override_dep(module_name="B", allow_multiple_versions=["3.3", "4.4"], registry="
 	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{
 		"A": LocalPathOverride{Path: wsDir},
-		"B": MultipleVersionsOverride{
+		"B": MultipleVersionOverride{
 			Versions: []string{"3.3", "4.4"},
 			Registry: reg.URL(),
 		},
@@ -335,8 +341,8 @@ bazel_dep(name="E", version="1.0")
 module(name="A")
 bazel_dep(name="B", version="1.0")
 bazel_dep(name="C", version="1.0")
-override_dep(module_name="C", registry="%v")
-override_dep(module_name="D", registry="%v")
+override_dep(module_name="C", override=single_version_override(registry="%v"))
+override_dep(module_name="D", override=single_version_override(registry="%v"))
 `, reg2.URL(), reg3.URL()))
 
 	v, err := runDiscovery(wsDir, "", []string{reg1.URL()})
@@ -344,8 +350,8 @@ override_dep(module_name="D", registry="%v")
 	assert.Equal(t, "A", v.rootModuleName)
 	assert.Equal(t, OverrideSet{
 		"A": LocalPathOverride{Path: wsDir},
-		"C": RegistryOverride{Registry: reg2.URL()},
-		"D": RegistryOverride{Registry: reg3.URL()},
+		"C": SingleVersionOverride{Registry: reg2.URL()},
+		"D": SingleVersionOverride{Registry: reg3.URL()},
 	}, v.overrideSet)
 	assert.Equal(t, DepGraph{
 		common.ModuleKey{"A", ""}: &Module{

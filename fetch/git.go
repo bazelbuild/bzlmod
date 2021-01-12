@@ -7,6 +7,7 @@ type Git struct {
 	Repo       string
 	Commit     string
 	PatchFiles []string
+	PatchStrip int
 }
 
 func (g *Git) Fetch(vendorDir string) (string, error) {

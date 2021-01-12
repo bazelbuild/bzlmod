@@ -20,6 +20,7 @@ type Archive struct {
 	Integrity   string
 	StripPrefix string
 	PatchFiles  []string
+	PatchStrip  int
 
 	// Fprint should be a hash computed from information that is enough to distinguish this archive fetch from
 	// others. It will be used as the name of the shared repo directory.
