@@ -229,6 +229,7 @@ override_dep(
   override=single_version_override(
     version="1.0",
     patch_files=["http://patches.com/patch1","http://patches.com/patch2"],
+    patch_strip=2,
   ),
 )
 `)
@@ -245,7 +246,7 @@ module(name="B", version="1.0")
 		"A": LocalPathOverride{Path: wsDir},
 		"B": SingleVersionOverride{
 			Version: "1.0",
-			Patches: []string{"http://patches.com/patch1", "http://patches.com/patch2"},
+			Patches: []fetch.Patch{{"http://patches.com/patch1", 2}, {"http://patches.com/patch2", 2}},
 		},
 	}, v.overrideSet)
 	assert.Equal(t, DepGraph{

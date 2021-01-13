@@ -19,8 +19,7 @@ type Archive struct {
 	URLs        []string
 	Integrity   string
 	StripPrefix string
-	PatchFiles  []string
-	PatchStrip  int
+	Patches     []Patch
 
 	// Fprint should be a hash computed from information that is enough to distinguish this archive fetch from
 	// others. It will be used as the name of the shared repo directory.
@@ -30,6 +29,11 @@ type Archive struct {
 
 func (a *Archive) Fingerprint() string {
 	return a.Fprint
+}
+
+func (a *Archive) AppendPatches(patches []Patch) error {
+	a.Patches = append(a.Patches, patches...)
+	return nil
 }
 
 func (a *Archive) Fetch(vendorDir string) (string, error) {

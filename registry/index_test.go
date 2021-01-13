@@ -78,7 +78,8 @@ func TestIndex_GetFetcher(t *testing.T) {
 		"/A/2.0/source.json": []byte(`{
   "url": "https://github.com/lol.tar.gz",
   "integrity": "sha256-bleh",
-  "patch_files": ["1-fix-this.patch", "2-fix-that.patch"]
+  "patch_files": ["1-fix-this.patch", "2-fix-that.patch"],
+  "patch_strip": 3
 }`),
 		"/B/1.0/source.json": []byte(`{
   "url": "https://example.com/archive.jar?with=query",
@@ -116,9 +117,9 @@ func TestIndex_GetFetcher(t *testing.T) {
 					"https://github.com/lol.tar.gz",
 				},
 				Integrity: "sha256-bleh",
-				PatchFiles: []string{
-					reg.URL() + "/A/2.0/patches/1-fix-this.patch",
-					reg.URL() + "/A/2.0/patches/2-fix-that.patch",
+				Patches: []fetch.Patch{
+					{reg.URL() + "/A/2.0/patches/1-fix-this.patch", 3},
+					{reg.URL() + "/A/2.0/patches/2-fix-that.patch", 3},
 				},
 				Fprint: common.Hash("regModule", "A", "2.0", reg.URL()),
 			}, fetcher, reg.URL())

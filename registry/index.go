@@ -119,9 +119,11 @@ func (i *Index) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	for _, patchFileName := range sourceJSON.PatchFiles {
 		patchFileURL := *i.url
 		patchFileURL.Path = path.Join(patchFileURL.Path, key.Name, key.Version, "patches", patchFileName)
-		fetcher.PatchFiles = append(fetcher.PatchFiles, patchFileURL.String())
+		fetcher.Patches = append(fetcher.Patches, fetch.Patch{
+			PatchFile:  patchFileURL.String(),
+			PatchStrip: sourceJSON.PatchStrip,
+		})
 	}
-	// TODO: PatchStrip
 	return fetcher, nil
 }
 

@@ -14,12 +14,12 @@ func TestWrapper_JSONRoundtrip(t *testing.T) {
 			URLs:        []string{"https://bazel.build/", "https://build.bazel/"},
 			Integrity:   "sha256-blah",
 			StripPrefix: "",
-			PatchFiles:  nil,
+			Patches:     nil,
 		},
 		&Git{
-			Repo:       "https://github.com/bazelbuild/bzlmod",
-			Commit:     "123456abcdef",
-			PatchFiles: []string{"just kidding"},
+			Repo:    "https://github.com/bazelbuild/bzlmod",
+			Commit:  "123456abcdef",
+			Patches: []Patch{{"file1", 1}, {"file2", 0}},
 		},
 		&LocalPath{"heh"},
 	}

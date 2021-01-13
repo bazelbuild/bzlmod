@@ -1,5 +1,7 @@
 package fetch
 
+import "fmt"
+
 // Fetcher contains all the information needed to "fetch" a repo. "Fetch" here is simply defined as making the contents
 // of a repo available in a local directory through some means.
 type Fetcher interface {
@@ -13,6 +15,10 @@ type Fetcher interface {
 	// repo should be re-fetched. Note that the fingerprint need not necessarily be calculated from the actual bytes of
 	// fetched contents.
 	Fingerprint() string
+
+	// AppendPatches appends an extra set of patches to the Fetcher. This can return an error if, for example, this
+	// Fetcher doesn't support patches.
+	AppendPatches(patches []Patch) error
 }
 
 // Wrapper wraps all known implementations of the Fetcher interface and acts as a multiplexer (only 1 member should be
@@ -53,6 +59,10 @@ func (w Wrapper) Fingerprint() string {
 	return w.Unwrap().Fingerprint()
 }
 
+func (w Wrapper) AppendPatches(patches []Patch) error {
+	return w.Unwrap().AppendPatches(patches)
+}
+
 // LocalPath represents a locally available unpacked directory.
 type LocalPath struct {
 	Path string
@@ -66,4 +76,8 @@ func (lp *LocalPath) Fetch(vendorDir string) (string, error) {
 func (lp *LocalPath) Fingerprint() string {
 	// The local path never needs to be re-fetched.
 	return ""
+}
+
+func (lp *LocalPath) AppendPatches(patches []Patch) error {
+	return fmt.Errorf("LocalPath fetcher does not support patches")
 }

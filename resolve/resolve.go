@@ -63,6 +63,12 @@ func fillModuleData(ctx *context) error {
 		if err != nil {
 			return err
 		}
+		// We may need to apply an extra set of patches here if this module is overridden with more patches.
+		if o, ok := ctx.overrideSet[moduleKey.Name].(SingleVersionOverride); ok {
+			if err = module.Fetcher.AppendPatches(o.Patches); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

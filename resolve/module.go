@@ -40,10 +40,9 @@ type DepGraph map[common.ModuleKey]*Module
 type OverrideSet map[string]interface{}
 
 type SingleVersionOverride struct {
-	Version    string
-	Registry   string
-	Patches    []string
-	PatchStrip int
+	Version  string
+	Registry string
+	Patches  []fetch.Patch
 }
 
 type MultipleVersionOverride struct {
@@ -59,13 +58,11 @@ type ArchiveOverride struct {
 	URL         string
 	Integrity   string
 	StripPrefix string
-	Patches     []string
-	PatchStrip  int
+	Patches     []fetch.Patch
 }
 
 type GitOverride struct {
-	Repo       string
-	Commit     string
-	Patches    []string
-	PatchStrip int
+	Repo    string
+	Commit  string
+	Patches []fetch.Patch
 }

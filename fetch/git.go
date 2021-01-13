@@ -4,10 +4,9 @@ import "fmt"
 
 // Git represents a Git repository.
 type Git struct {
-	Repo       string
-	Commit     string
-	PatchFiles []string
-	PatchStrip int
+	Repo    string
+	Commit  string
+	Patches []Patch
 }
 
 func (g *Git) Fetch(vendorDir string) (string, error) {
@@ -16,4 +15,9 @@ func (g *Git) Fetch(vendorDir string) (string, error) {
 
 func (g *Git) Fingerprint() string {
 	return "TODO" // TODO
+}
+
+func (g *Git) AppendPatches(patches []Patch) error {
+	g.Patches = append(g.Patches, patches...)
+	return nil
 }

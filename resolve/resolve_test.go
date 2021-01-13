@@ -1,8 +1,10 @@
 package resolve
 
 import (
+	"encoding/json"
 	"github.com/bazelbuild/bzlmod/common/testutil"
 	"github.com/bazelbuild/bzlmod/fetch"
+	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/bazelbuild/bzlmod/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestRepoNames(t *testing.T) {
+func TestResolve_RepoNames(t *testing.T) {
 	wsDir := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
 module(name="A")
@@ -130,4 +132,40 @@ repo(
 `
 		assert.Equal(t, expectedWs, string(ws))
 	}
+}
+
+func TestResolve_ExtraPatches(t *testing.T) {
+	wsDir := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(wsDir, "MODULE.bazel"), `
+module(name="A")
+bazel_dep(name="B", version="1.0")
+override_dep(
+  module_name="B",
+  override=single_version_override(
+    patch_files=["https://patches.com/a.patch","https://patches.com/b.patch"],
+    patch_strip=2,
+  ),
+)
+`)
+	reg := registry.NewFake("fake")
+	reg.AddModule(t, "B", "1.0", `
+module(name="B", version="1.0")
+`, &fetch.Archive{
+		URLs:      []string{"https://registry.com/a.zip"},
+		Integrity: "",
+		Patches:   []fetch.Patch{{"https://registry.com/a.patch", 1}},
+		Fprint:    "something",
+	})
+
+	require.NoError(t, Resolve(wsDir, "", []string{reg.URL()}))
+
+	lockFile, err := ioutil.ReadFile(filepath.Join(wsDir, "bzlmod.lock"))
+	require.NoError(t, err)
+	var ws lockfile.Workspace
+	require.NoError(t, json.Unmarshal(lockFile, &ws))
+	assert.Equal(t, []fetch.Patch{
+		{"https://registry.com/a.patch", 1},
+		{"https://patches.com/a.patch", 2},
+		{"https://patches.com/b.patch", 2},
+	}, ws.Repos["B"].Fetcher.Archive.Patches)
 }

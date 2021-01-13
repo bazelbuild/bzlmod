@@ -71,6 +71,24 @@ func extractStringSlice(list *starlark.List) ([]string, error) {
 	return r, nil
 }
 
+func extractPatchSlice(list *starlark.List, patchStrip int) ([]fetch.Patch, error) {
+	if list == nil {
+		if patchStrip > 0 {
+			return nil, fmt.Errorf("patch_strip specified without patch_files")
+		}
+		return nil, nil
+	}
+	var patches []fetch.Patch
+	for i := 0; i < list.Len(); i++ {
+		s, ok := starlark.AsString(list.Index(i))
+		if !ok {
+			return nil, fmt.Errorf("got %v, want string", list.Index(i).Type())
+		}
+		patches = append(patches, fetch.Patch{s, patchStrip})
+	}
+	return patches, nil
+}
+
 type builtinFn func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)
 
 func noOp(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
@@ -184,24 +202,22 @@ func singleVersionOverrideFn(_ *starlark.Thread, b *starlark.Builtin, args starl
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
 	var (
-		err            error
-		override       SingleVersionOverride
-		patchFilesList *starlark.List
+		err        error
+		override   SingleVersionOverride
+		patchFiles *starlark.List
+		patchStrip int
 	)
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"version?", &override.Version,
 		"registry?", &override.Registry,
-		"patch_files?", &patchFilesList,
-		"patch_strip?", &override.PatchStrip,
+		"patch_files?", &patchFiles,
+		"patch_strip?", &patchStrip,
 	); err != nil {
 		return nil, err
 	}
-	override.Patches, err = extractStringSlice(patchFilesList)
+	override.Patches, err = extractPatchSlice(patchFiles, patchStrip)
 	if err != nil {
 		return nil, err
-	}
-	if override.PatchStrip > 0 && len(override.Patches) == 0 {
-		return nil, fmt.Errorf("patch_strip specified without patch_files")
 	}
 	return &starlarkOverrideHolder{override}, nil
 }
@@ -233,25 +249,23 @@ func archiveOverrideFn(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tu
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
 	var (
-		err            error
-		override       ArchiveOverride
-		patchFilesList *starlark.List
+		err        error
+		override   ArchiveOverride
+		patchFiles *starlark.List
+		patchStrip int
 	)
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"url", &override.URL,
 		"integrity", &override.Integrity,
 		"strip_prefix?", &override.StripPrefix,
-		"patch_files?", &patchFilesList,
-		"patch_strip?", &override.PatchStrip,
+		"patch_files?", &patchFiles,
+		"patch_strip?", &patchStrip,
 	); err != nil {
 		return nil, err
 	}
-	override.Patches, err = extractStringSlice(patchFilesList)
+	override.Patches, err = extractPatchSlice(patchFiles, patchStrip)
 	if err != nil {
 		return nil, err
-	}
-	if override.PatchStrip > 0 && len(override.Patches) == 0 {
-		return nil, fmt.Errorf("patch_strip specified without patch_files")
 	}
 	return &starlarkOverrideHolder{override}, nil
 }
@@ -261,24 +275,22 @@ func gitOverrideFn(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
 	var (
-		err            error
-		override       GitOverride
-		patchFilesList *starlark.List
+		err        error
+		override   GitOverride
+		patchFiles *starlark.List
+		patchStrip int
 	)
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs,
 		"repo", &override.Repo,
 		"commit", &override.Commit,
-		"patch_files?", &patchFilesList,
-		"patch_strip?", &override.PatchStrip,
+		"patch_files?", &patchFiles,
+		"patch_strip?", &patchStrip,
 	); err != nil {
 		return nil, err
 	}
-	override.Patches, err = extractStringSlice(patchFilesList)
+	override.Patches, err = extractPatchSlice(patchFiles, patchStrip)
 	if err != nil {
 		return nil, err
-	}
-	if override.PatchStrip > 0 && len(override.Patches) == 0 {
-		return nil, fmt.Errorf("patch_strip specified without patch_files")
 	}
 	return &starlarkOverrideHolder{override}, nil
 }
@@ -444,15 +456,14 @@ func getModuleBazel(key common.ModuleKey, overrideSet OverrideSet, registries []
 				URLs:        []string{o.URL},
 				Integrity:   o.Integrity,
 				StripPrefix: o.StripPrefix,
-				PatchFiles:  o.Patches,
+				Patches:     o.Patches,
 				Fprint:      common.Hash("urlOverride", o.URL, o.Patches),
 			}
 		case GitOverride:
 			result.fetcher = &fetch.Git{
-				Repo:       o.Repo,
-				Commit:     o.Commit,
-				PatchFiles: o.Patches,
-				PatchStrip: o.PatchStrip,
+				Repo:    o.Repo,
+				Commit:  o.Commit,
+				Patches: o.Patches,
 			}
 		}
 		// Fetch the contents of the module to get to the MODULE.bazel file. Note that we specify an empty vendorDir
