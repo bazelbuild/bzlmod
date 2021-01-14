@@ -31,8 +31,8 @@ func setUpServerAndLocalFiles(t *testing.T, dir string, files map[string][]byte)
 func TestIndex_GetModuleBazel(t *testing.T) {
 	dir := t.TempDir()
 	server := setUpServerAndLocalFiles(t, dir, map[string][]byte{
-		"/A/1.0/MODULE.bazel": []byte("kek"),
-		"/B/2.0/MODULE.bazel": []byte("lel"),
+		"/modules/A/1.0/MODULE.bazel": []byte("kek"),
+		"/modules/B/2.0/MODULE.bazel": []byte("lel"),
 	})
 	defer server.Close()
 
@@ -70,18 +70,18 @@ func TestIndex_GetFetcher(t *testing.T) {
     "file:///home/bazel/mymirror/"
   ]
 }`),
-		"/A/1.0/source.json": []byte(`{
+		"/modules/A/1.0/source.json": []byte(`{
   "url": "http://mysite.com/thing.zip",
   "integrity": "sha256-blah",
   "strip_prefix": "pref"
 }`),
-		"/A/2.0/source.json": []byte(`{
+		"/modules/A/2.0/source.json": []byte(`{
   "url": "https://github.com/lol.tar.gz",
   "integrity": "sha256-bleh",
   "patch_files": ["1-fix-this.patch", "2-fix-that.patch"],
   "patch_strip": 3
 }`),
-		"/B/1.0/source.json": []byte(`{
+		"/modules/B/1.0/source.json": []byte(`{
   "url": "https://example.com/archive.jar?with=query",
   "integrity": "sha256-bluh"
 }`),
@@ -118,8 +118,8 @@ func TestIndex_GetFetcher(t *testing.T) {
 				},
 				Integrity: "sha256-bleh",
 				Patches: []fetch.Patch{
-					{reg.URL() + "/A/2.0/patches/1-fix-this.patch", 3},
-					{reg.URL() + "/A/2.0/patches/2-fix-that.patch", 3},
+					{reg.URL() + "/modules/A/2.0/patches/1-fix-this.patch", 3},
+					{reg.URL() + "/modules/A/2.0/patches/2-fix-that.patch", 3},
 				},
 				Fprint: common.Hash("regModule", "A", "2.0", reg.URL()),
 			}, fetcher, reg.URL())

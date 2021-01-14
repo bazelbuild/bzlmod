@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 )
 
+// Index represents an index registry. Its URL can have either an HTTP(S) scheme, or a file scheme (for a local
+// directory).
 type Index struct {
 	url *urls.URL
 }
@@ -55,7 +57,7 @@ func (i *Index) grabFile(relPath string) ([]byte, error) {
 }
 
 func (i *Index) GetModuleBazel(key common.ModuleKey) ([]byte, error) {
-	p, err := i.grabFile(path.Join(key.Name, key.Version, "MODULE.bazel"))
+	p, err := i.grabFile(path.Join("modules", key.Name, key.Version, "MODULE.bazel"))
 	if errors.Is(err, ErrNotFound) {
 		return nil, fmt.Errorf("%w: %v", ErrNotFound, key)
 	}
@@ -91,7 +93,7 @@ func (i *Index) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 		return nil, fmt.Errorf("error reading bazel_registry.json of registry %v: %v", i.URL(), err)
 	}
 	sourceJSON := sourceJSON{}
-	if err := i.readAndParseJSON(path.Join(key.Name, key.Version, "source.json"), &sourceJSON); err != nil {
+	if err := i.readAndParseJSON(path.Join("modules", key.Name, key.Version, "source.json"), &sourceJSON); err != nil {
 		return nil, fmt.Errorf("error reading source.json file for %v from registry %v: %v", key, i.URL(), err)
 	}
 	sourceURL, err := urls.Parse(sourceJSON.URL)
@@ -118,7 +120,7 @@ func (i *Index) GetFetcher(key common.ModuleKey) (fetch.Fetcher, error) {
 	fetcher.StripPrefix = sourceJSON.StripPrefix
 	for _, patchFileName := range sourceJSON.PatchFiles {
 		patchFileURL := *i.url
-		patchFileURL.Path = path.Join(patchFileURL.Path, key.Name, key.Version, "patches", patchFileName)
+		patchFileURL.Path = path.Join(patchFileURL.Path, "modules", key.Name, key.Version, "patches", patchFileName)
 		fetcher.Patches = append(fetcher.Patches, fetch.Patch{
 			PatchFile:  patchFileURL.String(),
 			PatchStrip: sourceJSON.PatchStrip,

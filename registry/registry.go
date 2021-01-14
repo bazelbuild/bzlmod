@@ -8,14 +8,21 @@ import (
 	urls "net/url"
 )
 
+// Registry represents a Bazel module registry.
 type Registry interface {
+	// URL returns the URL uniquely identifying the registry.
 	URL() string
+	// GetModuleBazel retrieves the MODULE.bazel file of the module with the given key. Returns an error wrapping
+	// ErrNotFound if no such module exists in the registry.
 	GetModuleBazel(key common.ModuleKey) ([]byte, error)
+	// GetFetcher returns the Fetcher object which can be used to fetch the module with the given key. Returns an error
+	// wrapping ErrNotFound if no such module exists in the registry.
 	GetFetcher(key common.ModuleKey) (fetch.Fetcher, error)
 }
 
 var schemes = make(map[string]func(url *urls.URL) (Registry, error))
 
+// New creates a new Registry object from its URL. The scheme of the URL determines the type of the registry.
 func New(rawurl string) (Registry, error) {
 	url, err := urls.Parse(rawurl)
 	if err != nil {
@@ -30,8 +37,8 @@ func New(rawurl string) (Registry, error) {
 
 var ErrNotFound = errors.New("module not found")
 
-// Gets the MODULE.bazel file contents for the module with the given key, using the list of
-// registries with an optional override `regOverride` (use empty string for no override).
+// GetModuleBazel gets the MODULE.bazel file contents for the module with the given key, using the list of
+// registries with an optional override `regOverride` (use an empty string for no override).
 // Returns the file contents, and the registry that actually has that module.
 func GetModuleBazel(key common.ModuleKey, registries []string, regOverride string) ([]byte, Registry, error) {
 	if regOverride != "" {
