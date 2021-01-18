@@ -18,6 +18,7 @@ type context struct {
 	overrideSet          OverrideSet
 	moduleBazelIntegrity string
 	vendorDir            string
+	lfWorkspace          *lockfile.Workspace
 }
 
 func Resolve(wsDir string, vendorDir string, registries []string) error {
@@ -31,7 +32,9 @@ func Resolve(wsDir string, vendorDir string, registries []string) error {
 	if err = fillModuleData(ctx); err != nil {
 		return fmt.Errorf("error filling module data: %v", err)
 	}
-	// TODO: run module rules
+	if err = runModuleRules(ctx); err != nil {
+		return fmt.Errorf("error resolving module rules: %v", err)
+	}
 	if err = writeLockFile(wsDir, ctx); err != nil {
 		return fmt.Errorf("error writing lockfile: %v", err)
 	}
@@ -82,9 +85,12 @@ func writeLockFile(wsDir string, ctx *context) error {
 		if module.RepoName == "" {
 			continue
 		}
-		ws.Repos[module.RepoName] = &lockfile.Repo{
-			Fetcher: fetch.Wrap(module.Fetcher),
+		repo := lockfile.NewRepo()
+		repo.Fetcher = fetch.Wrap(module.Fetcher)
+		for repoName, depKey := range module.Deps {
+			repo.Deps[repoName] = ctx.depGraph[depKey].RepoName
 		}
+		ws.Repos[module.RepoName] = repo
 	}
 
 	bytes, err := json.MarshalIndent(ws, "", "  ")

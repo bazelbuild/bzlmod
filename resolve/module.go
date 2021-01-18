@@ -3,6 +3,7 @@ package resolve
 import (
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
+	"github.com/bazelbuild/bzlmod/modrule"
 	"github.com/bazelbuild/bzlmod/registry"
 )
 
@@ -25,8 +26,8 @@ type Module struct {
 	Fetcher  fetch.Fetcher // If an override exists, this can be filled during discovery
 	RepoName string
 
-	// Tags come from module rule invocations
-	//tags []Tags
+	// Tags come from module rule invocations.
+	Tags []modrule.Tag
 }
 
 func NewModule() *Module {

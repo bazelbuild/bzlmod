@@ -7,6 +7,8 @@ import "fmt"
 type Fetcher interface {
 	// Fetch performs the fetch and returns the absolute path to the local directory where the fetched contents can be
 	// accessed.
+	// Fetch should be idempotent; that is, calling Fetch multiple times in a row should yield the same effect as
+	// calling it once. In other words, subsequent calls to Fetch should terminate as early as possible.
 	// If vendorDir is non-empty, we're operating in vendoring mode; Fetch should make the contents available under
 	// vendorDir if appropriate. Otherwise, Fetch is free to place the contents wherever.
 	Fetch(vendorDir string) (string, error)

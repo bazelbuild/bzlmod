@@ -75,7 +75,11 @@ func runFetch(fetchAll bool, repos []string) error {
 }
 
 func singleFetch(name string, repo *lockfile.Repo, ws *lockfile.Workspace, writeName bool) error {
-	path, err := repo.Fetcher.Fetch(filepath.Join(ws.VendorDir, name))
+	vendorDir := ""
+	if ws.VendorDir != "" {
+		vendorDir = filepath.Join(ws.VendorDir, name)
+	}
+	path, err := repo.Fetcher.Fetch(vendorDir)
 	if err != nil {
 		return fmt.Errorf("error fetching repo %v: %v", name, err)
 	}

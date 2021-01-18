@@ -5,6 +5,7 @@ import (
 	"github.com/bazelbuild/bzlmod/common"
 	integrities "github.com/bazelbuild/bzlmod/common/integrity"
 	"github.com/bazelbuild/bzlmod/fetch"
+	"github.com/bazelbuild/bzlmod/modrule"
 	"io/ioutil"
 	"path/filepath"
 
@@ -39,15 +40,25 @@ func mergeWsSettings(settings ...*wsSettings) *wsSettings {
 }
 
 type threadState struct {
-	module      *Module
+	// Populated by the `module` directive. Is nil to begin with.
+	module *Module
+	// Populated by the `override_dep` directive. Is empty to begin with.
 	overrideSet OverrideSet
-	wsSettings  *wsSettings
+	// Populated by the `workspace_settings` directive. Is nil to begin with.
+	wsSettings *wsSettings
+	// This field represents the key of the module whose MODULE.bazel is being executed on this thread. It differs from
+	// the Key field of the `module` field above in that it's the "requested" key from the root module's perspective
+	// (for example, the version could be empty because of an override).
+	// It should be populated before the starlark.ExecFile call, *except* for the root module itself, whose name we
+	// don't know until after. For the root module itself, this field should simply be kept empty (since we can only
+	// fill it after starlark.ExecFile, at which point the threadState struct is no longer useful).
+	intendedKey common.ModuleKey
 }
 
 const tstateLocalKey = "module_bazel_tstate"
 
-func initThreadState(t *starlark.Thread) *threadState {
-	tstate := &threadState{overrideSet: OverrideSet{}}
+func initThreadState(t *starlark.Thread, intendedKey common.ModuleKey) *threadState {
+	tstate := &threadState{overrideSet: OverrideSet{}, intendedKey: intendedKey}
 	t.SetLocal(tstateLocalKey, tstate)
 	return tstate
 }
@@ -99,7 +110,8 @@ func moduleFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwar
 	if len(args) > 0 {
 		return nil, fmt.Errorf("%v: unexpected positional arguments", b.Name())
 	}
-	if getThreadState(t).module != nil {
+	tstate := getThreadState(t)
+	if tstate.module != nil {
 		return nil, fmt.Errorf("%v: can only be called once", b.Name())
 	}
 	module := NewModule()
@@ -114,8 +126,15 @@ func moduleFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwar
 	); err != nil {
 		return nil, err
 	}
-	getThreadState(t).module = module
-	return starlark.None, nil
+	tstate.module = module
+	if tstate.intendedKey.Name != "" {
+		// This is not the root module. tstate.intendedKey should hold the key of this module in the dep graph (it could
+		// be different from module.Key in case of overrides).
+		return modrule.NewBazelDep(tstate.intendedKey), nil
+	} else {
+		// This is the root module.
+		return modrule.NewBazelDep(module.Key), nil
+	}
 }
 
 func wsSettingsFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -160,7 +179,7 @@ func bazelDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 		repoName = depKey.Name
 	}
 	getThreadState(t).module.Deps[repoName] = depKey
-	return starlark.None, nil // TODO: return a smart value for module rules
+	return modrule.NewBazelDep(depKey), nil
 }
 
 func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -339,7 +358,8 @@ func runDiscovery(wsDir string, vendorDir string, registries []string) (*context
 		Name:  "discovery of root",
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	tstate := initThreadState(thread)
+	// We can't know the key of the root module before evaluating its MODULE.bazel file!
+	tstate := initThreadState(thread, common.ModuleKey{})
 
 	moduleBazel, err := ioutil.ReadFile(filepath.Join(wsDir, "MODULE.bazel"))
 	if err != nil {
@@ -349,6 +369,10 @@ func runDiscovery(wsDir string, vendorDir string, registries []string) (*context
 		return nil, err
 	}
 
+	if tstate.module == nil {
+		tstate.module = NewModule()
+	}
+	tstate.module.Tags = modrule.GetTags(thread)
 	wsSettings := mergeWsSettings(tstate.wsSettings, &wsSettings{
 		vendorDir:  vendorDir,
 		registries: registries,
@@ -409,7 +433,7 @@ func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph De
 		Name:  fmt.Sprintf("discovery[%v]", key),
 		Print: func(thread *starlark.Thread, msg string) { fmt.Println(msg) },
 	}
-	tstate := initThreadState(thread)
+	tstate := initThreadState(thread, key)
 
 	if _, err = starlark.ExecFile(thread, key.Name+"/MODULE.bazel", moduleBazelResult.moduleBazel, newStarlarkEnv(false)); err != nil {
 		return err
@@ -424,6 +448,7 @@ func processSingleDep(key common.ModuleKey, overrideSet OverrideSet, depGraph De
 	if key.Version != "" && key.Version != tstate.module.Key.Version {
 		return fmt.Errorf("the MODULE.bazel file of %v declares a different version (%v)", key, tstate.module.Key.Version)
 	}
+	tstate.module.Tags = modrule.GetTags(thread)
 	tstate.module.Reg = moduleBazelResult.reg
 	tstate.module.Fetcher = moduleBazelResult.fetcher
 	depGraph[key] = tstate.module
