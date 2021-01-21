@@ -9,8 +9,10 @@ import (
 const FileName = "bzlmod.lock"
 
 type Workspace struct {
-	VendorDir string
-	Repos     map[string]*Repo
+	VendorDir     string
+	Repos         map[string]*Repo
+	Toolchains    []string
+	ExecPlatforms []string
 }
 
 type Repo struct {

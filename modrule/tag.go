@@ -84,11 +84,13 @@ func (r *ruleCallable) Hash() (uint32, error) { return 0, fmt.Errorf("not hashab
 func (r *ruleCallable) Name() string          { return r.String() }
 
 func (r *ruleCallable) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("%v: unexpected positional arguments", thread.CallFrame(0).Pos)
+	}
 	thread.SetLocal(tagsKey, append(GetTags(thread), Tag{
 		ModuleKey:   r.moduleKey,
 		RulesetName: r.rulesetName,
 		RuleName:    r.ruleName,
-		Args:        args,
 		Kwargs:      kwargs,
 		Pos:         thread.CallFrame(0).Pos,
 	}))
@@ -102,7 +104,6 @@ type Tag struct {
 	ModuleKey   common.ModuleKey
 	RulesetName string
 	RuleName    string
-	Args        starlark.Tuple
 	Kwargs      []starlark.Tuple
 	Pos         syntax.Position
 }

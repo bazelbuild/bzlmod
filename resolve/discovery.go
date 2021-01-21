@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	integrities "github.com/bazelbuild/bzlmod/common/integrity"
+	"github.com/bazelbuild/bzlmod/common/starutil"
 	"github.com/bazelbuild/bzlmod/fetch"
+	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/bazelbuild/bzlmod/modrule"
 	"io/ioutil"
 	"path/filepath"
@@ -67,21 +69,6 @@ func getThreadState(t *starlark.Thread) *threadState {
 	return t.Local(tstateLocalKey).(*threadState)
 }
 
-func extractStringSlice(list *starlark.List) ([]string, error) {
-	if list == nil {
-		return nil, nil
-	}
-	var r []string
-	for i := 0; i < list.Len(); i++ {
-		s, ok := starlark.AsString(list.Index(i))
-		if !ok {
-			return nil, fmt.Errorf("got %v, want string", list.Index(i).Type())
-		}
-		r = append(r, s)
-	}
-	return r, nil
-}
-
 func extractPatchSlice(list *starlark.List, patchStrip int) ([]fetch.Patch, error) {
 	if list == nil {
 		if patchStrip > 0 {
@@ -121,8 +108,8 @@ func moduleFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwar
 		"compatibility_level?", &module.CompatLevel,
 		"bazel_compatibility?", &module.BazelCompat,
 		"module_rule_exports?", &module.ModuleRuleExports,
-		"toolchains_to_register", &module.Toolchains,
-		"execution_platforms_to_register", &module.ExecPlatforms,
+		"toolchains_to_register?", &module.Toolchains,
+		"execution_platforms_to_register?", &module.ExecPlatforms,
 	); err != nil {
 		return nil, err
 	}
@@ -153,7 +140,7 @@ func wsSettingsFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, 
 		return nil, err
 	}
 	var err error
-	wsSettings.registries, err = extractStringSlice(registries)
+	wsSettings.registries, err = starutil.ExtractStringSlice(registries)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +243,7 @@ func multipleVersionOverrideFn(_ *starlark.Thread, b *starlark.Builtin, args sta
 	); err != nil {
 		return nil, err
 	}
-	override.Versions, err = extractStringSlice(versionsList)
+	override.Versions, err = starutil.ExtractStringSlice(versionsList)
 	if err != nil {
 		return nil, err
 	}
@@ -384,8 +371,9 @@ func runDiscovery(wsDir string, vendorDir string, registries []string) (*context
 		},
 		overrideSet:          tstate.overrideSet,
 		moduleBazelIntegrity: integrities.MustGenerate("sha256", moduleBazel),
-		vendorDir:            wsSettings.vendorDir,
+		lfWorkspace:          lockfile.NewWorkspace(),
 	}
+	ctx.lfWorkspace.VendorDir = wsSettings.vendorDir
 	if _, exists := ctx.overrideSet[ctx.rootModuleName]; exists {
 		return nil, fmt.Errorf("invalid override found for root module")
 	}

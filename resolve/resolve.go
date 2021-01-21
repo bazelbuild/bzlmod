@@ -17,7 +17,6 @@ type context struct {
 	depGraph             DepGraph
 	overrideSet          OverrideSet
 	moduleBazelIntegrity string
-	vendorDir            string
 	lfWorkspace          *lockfile.Workspace
 }
 
@@ -74,13 +73,7 @@ func fillModuleData(ctx *context) error {
 		}
 	}
 
-	return nil
-}
-
-func writeLockFile(wsDir string, ctx *context) error {
-	ws := lockfile.NewWorkspace()
-	ws.VendorDir = ctx.vendorDir
-
+	// Fill the lockfile workspace with repos that come from Bazel modules (i.e. bazel_deps).
 	for _, module := range ctx.depGraph {
 		if module.RepoName == "" {
 			continue
@@ -90,10 +83,14 @@ func writeLockFile(wsDir string, ctx *context) error {
 		for repoName, depKey := range module.Deps {
 			repo.Deps[repoName] = ctx.depGraph[depKey].RepoName
 		}
-		ws.Repos[module.RepoName] = repo
+		ctx.lfWorkspace.Repos[module.RepoName] = repo
 	}
 
-	bytes, err := json.MarshalIndent(ws, "", "  ")
+	return nil
+}
+
+func writeLockFile(wsDir string, ctx *context) error {
+	bytes, err := json.MarshalIndent(ctx.lfWorkspace, "", "  ")
 	if err != nil {
 		return err
 	}
