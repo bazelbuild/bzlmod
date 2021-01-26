@@ -8,7 +8,6 @@ import (
 	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/bazelbuild/bzlmod/modrule"
 	"go.starlark.net/starlark"
-	"io/ioutil"
 	"log"
 	"path/filepath"
 )
@@ -30,6 +29,15 @@ func runModuleRules(ctx *context) error {
 
 	// Fetch all modules whose rules are invoked.
 	repoPaths := make(map[string]string)
+	eval := modrule.NewEval(func(repo string) (string, error) {
+		path, ok := repoPaths[repo]
+		if ok {
+			return path, nil
+		}
+		var err error
+		repoPaths[repo], err = ctx.lfWorkspace.Fetch(repo)
+		return repoPaths[repo], err
+	})
 	for key, tagsByRuleset := range tagsByKeyAndRuleset {
 		module := ctx.depGraph[key]
 		var err error
@@ -38,18 +46,7 @@ func runModuleRules(ctx *context) error {
 			return err
 		}
 		moduleExportsPath := filepath.Join(repoPaths[module.RepoName], filepath.FromSlash(module.ModuleRuleExports))
-		moduleExports, err := ioutil.ReadFile(moduleExportsPath)
-		if err != nil {
-			return err
-		}
-		rulesets, err := modrule.GetRulesets(key, moduleExports, func(repo string) (string, error) {
-			path, ok := repoPaths[repo]
-			if ok {
-				return path, nil
-			}
-			repoPaths[repo], err = ctx.lfWorkspace.Fetch(repo)
-			return repoPaths[repo], err
-		})
+		rulesets, err := eval.ExecForRulesets(key, moduleExportsPath)
 		if err != nil {
 			return err
 		}
@@ -98,62 +95,6 @@ func runModuleRules(ctx *context) error {
 	return nil
 }
 
-type bazelModule struct {
-	name          starlark.String
-	version       starlark.String
-	bazelDeps     []starlark.Value
-	ruleInstances *ruleInstances
-}
-
-func (bm *bazelModule) String() string        { return fmt.Sprintf("BazelModule[%v, ...]", string(bm.name)) }
-func (bm *bazelModule) Type() string          { return "BazelModule" }
-func (bm *bazelModule) Freeze()               {}
-func (bm *bazelModule) Truth() starlark.Bool  { return true }
-func (bm *bazelModule) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: BazelModule") }
-
-func (bm *bazelModule) Attr(name string) (starlark.Value, error) {
-	switch name {
-	case "name":
-		return bm.name, nil
-	case "version":
-		return bm.version, nil
-	case "bazel_deps":
-		return starlark.NewList(bm.bazelDeps), nil
-	case "rule_instances":
-		return bm.ruleInstances, nil
-	default:
-		return nil, nil
-	}
-}
-
-func (bm *bazelModule) AttrNames() []string {
-	return []string{"name", "version", "bazel_deps", "rule_instances"}
-}
-
-type ruleInstances struct {
-	inst map[string][]starlark.Value
-}
-
-func (ri *ruleInstances) String() string        { return "RuleInstances[...]" }
-func (ri *ruleInstances) Type() string          { return "RuleInstances" }
-func (ri *ruleInstances) Truth() starlark.Bool  { return true }
-func (ri *ruleInstances) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: RuleInstances") }
-func (ri *ruleInstances) Freeze()               {}
-
-func (ri *ruleInstances) Attr(name string) (starlark.Value, error) {
-	return starlark.NewList(ri.inst[name]), nil
-}
-
-func (ri *ruleInstances) AttrNames() []string {
-	keys := make([]string, len(ri.inst))
-	i := 0
-	for key := range ri.inst {
-		keys[i] = key
-		i++
-	}
-	return keys
-}
-
 func callResolveFn(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName string) (*modrule.ResolveResult, error) {
 	topModule, err := buildTopModule(ruleset, depGraph, rootModuleName)
 	if err != nil {
@@ -162,9 +103,9 @@ func callResolveFn(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName s
 	thread := &starlark.Thread{
 		Name: fmt.Sprintf("resolve_fn of %v in %v", ruleset.Name, ruleset.ModuleKey),
 	}
-	result, err := starlark.Call(thread, ruleset.ResolveFn, []starlark.Value{modrule.Context{}, topModule}, nil)
+	result, err := starlark.Call(thread, ruleset.ResolveFn, []starlark.Value{modrule.NewContext(topModule)}, nil)
 	if err != nil {
-		return nil, err
+		return nil, err // TODO: insert call frame info
 	}
 	rr, ok := result.(*modrule.ResolveResult)
 	if !ok {
@@ -174,13 +115,13 @@ func callResolveFn(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName s
 	return rr, nil
 }
 
-func buildTopModule(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName string) (*bazelModule, error) {
-	bazelModuleMap := make(map[common.ModuleKey]*bazelModule)
+func buildTopModule(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName string) (*modrule.BazelModule, error) {
+	bazelModuleMap := make(map[common.ModuleKey]*modrule.BazelModule)
 	for key, module := range depGraph {
-		bazelModule := &bazelModule{
-			name:          starlark.String(module.Key.Name),
-			version:       starlark.String(module.Key.Version),
-			ruleInstances: &ruleInstances{make(map[string][]starlark.Value)},
+		bazelModule := &modrule.BazelModule{
+			Name:          starlark.String(module.Key.Name),
+			Version:       starlark.String(module.Key.Version),
+			RuleInstances: modrule.NewRuleInstances(),
 		}
 		bazelModuleMap[key] = bazelModule
 		for _, tag := range module.Tags {
@@ -198,13 +139,13 @@ func buildTopModule(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName 
 				log.Printf("%v: %v", tag.Pos, err)
 				return nil, fmt.Errorf("error creating rule instance")
 			}
-			bazelModule.ruleInstances.inst[tag.RuleName] = append(bazelModule.ruleInstances.inst[tag.RuleName], ruleInstance)
+			bazelModule.RuleInstances.Append(tag.RuleName, ruleInstance)
 		}
 	}
 	for key, module := range depGraph {
 		bazelModule := bazelModuleMap[key]
 		for _, depKey := range module.Deps {
-			bazelModule.bazelDeps = append(bazelModule.bazelDeps, bazelModuleMap[depKey])
+			bazelModule.BazelDeps = append(bazelModule.BazelDeps, bazelModuleMap[depKey])
 		}
 	}
 	return bazelModuleMap[common.ModuleKey{rootModuleName, ""}], nil

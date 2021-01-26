@@ -6,6 +6,7 @@ import (
 	"github.com/bazelbuild/bzlmod/common/starutil"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+	"io/ioutil"
 )
 
 type Ruleset struct {
@@ -37,8 +38,14 @@ type Rule struct {
 }
 
 func (r *Rule) NewInstance(kwargs []starlark.Tuple) (*RuleInstance, error) {
-	// TODO
-	return nil, nil
+	inst, err := InstantiateAttrs(r.Attrs, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	return &RuleInstance{
+		Rule:  r,
+		Attrs: inst,
+	}, nil
 }
 
 func (r *Rule) String() string        { return fmt.Sprintf("module_rule(%v)", r.Name) }
@@ -250,23 +257,72 @@ func moduleRulesetMemberFn(t *starlark.Thread, b *starlark.Builtin, args starlar
 	return rule, nil
 }
 
-// GetRulesets executes the Starlark code contained in src and returns a map of all the Ruleset objects defined in the
-// source.
-func GetRulesets(key common.ModuleKey, src []byte, repoPathFn func(repo string) (string, error)) (map[string]*Ruleset, error) {
-	// predeclareds needed: ResolveResult, bfs, attrs, struct, module_rule, module_ruleset, module_ruleset_member
-	predeclared := starlark.StringDict{
-		"ResolveResult":         starlark.NewBuiltin("ResolveResult", resolveResultFn),
-		"attrs":                 attrModule,
-		"struct":                starlark.NewBuiltin("struct", starlarkstruct.Make),
-		"module_rule":           starlark.NewBuiltin("module_rule", moduleRuleFn),
-		"module_ruleset":        starlark.NewBuiltin("module_ruleset", moduleRulesetFn),
-		"module_ruleset_member": starlark.NewBuiltin("module_ruleset_member", moduleRulesetMemberFn),
+type evalCacheEntry struct {
+	globals starlark.StringDict
+	err     error
+}
+type Eval struct {
+	cache       map[string]*evalCacheEntry
+	predeclared starlark.StringDict
+	repoPathFn  func(repo string) (string, error)
+}
+
+func NewEval(repoPathFn func(repo string) (string, error)) *Eval {
+	return &Eval{
+		cache: make(map[string]*evalCacheEntry),
+		predeclared: starlark.StringDict{
+			"ResolveResult":         starlark.NewBuiltin("ResolveResult", resolveResultFn),
+			"attrs":                 attrModule,
+			"struct":                starlark.NewBuiltin("struct", starlarkstruct.Make),
+			"module_rule":           starlark.NewBuiltin("module_rule", moduleRuleFn),
+			"module_ruleset":        starlark.NewBuiltin("module_ruleset", moduleRulesetFn),
+			"module_ruleset_member": starlark.NewBuiltin("module_ruleset_member", moduleRulesetMemberFn),
+		},
+		repoPathFn: repoPathFn,
+	}
+}
+
+func (e *Eval) exec(filename string) (starlark.StringDict, error) {
+	src, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
 	}
 	thread := &starlark.Thread{
-		Name: "something", //TODO
-		Load: nil,         // TODO
+		Name: "exec " + filename,
+		Load: func(t *starlark.Thread, label string) (starlark.StringDict, error) {
+			filename, err := e.resolveLabel(t, label)
+			if err != nil {
+				return nil, err
+			}
+			return e.load(filename)
+		},
 	}
-	globals, err := starlark.ExecFile(thread, "filename? -- TODO", src, predeclared) // TODO: filename
+	return starlark.ExecFile(thread, filename, src, e.predeclared)
+}
+
+func (e *Eval) resolveLabel(t *starlark.Thread, label string) (string, error) {
+	// TODO
+	return "", nil
+}
+
+func (e *Eval) load(filename string) (starlark.StringDict, error) {
+	entry, ok := e.cache[filename]
+	if entry == nil {
+		if ok {
+			return nil, fmt.Errorf("cycle in load graph")
+		}
+		e.cache[filename] = nil
+		globals, err := e.exec(filename)
+		entry = &evalCacheEntry{globals, err}
+		e.cache[filename] = entry
+	}
+	return entry.globals, entry.err
+}
+
+// GetRulesets executes the Starlark code contained in src and returns a map of all the Ruleset objects defined in the
+// source.
+func (e *Eval) ExecForRulesets(key common.ModuleKey, filename string) (map[string]*Ruleset, error) {
+	globals, err := e.load(filename)
 	if err != nil {
 		return nil, err
 	}
