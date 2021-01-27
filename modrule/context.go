@@ -7,10 +7,16 @@ import (
 
 type Context struct {
 	topModule *BazelModule
+	repoName  string
+	repoInfo  starlark.Value
 }
 
-func NewContext(topModule *BazelModule) Context {
+func NewResolveContext(topModule *BazelModule) Context {
 	return Context{topModule: topModule}
+}
+
+func NewFetchContext(repoName string, repoInfo starlark.Value) Context {
+	return Context{repoName: repoName, repoInfo: repoInfo}
 }
 
 func (c Context) String() string        { return "ModuleRuleContext" }
@@ -20,7 +26,7 @@ func (c Context) Truth() starlark.Bool  { return true }
 func (c Context) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: ModuleRuleContext") }
 
 func (c Context) Attr(name string) (starlark.Value, error) {
-	// TODO: execute, top_module, os?
+	// TODO: execute, top_module, os?, repo_name, repo_info
 	panic("implement me")
 }
 

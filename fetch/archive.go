@@ -36,7 +36,16 @@ func (a *Archive) AppendPatches(patches []Patch) error {
 	return nil
 }
 
-func (a *Archive) Fetch(vendorDir string) (string, error) {
+func (a *Archive) EarlyFetch() (string, error) {
+	return a.Fetch("", nil)
+}
+
+func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
+	vendorDir := ""
+	if env != nil {
+		// TODO: figure out whether env.VendorDir should be a filepath or a path.
+		vendorDir = filepath.Join(env.VendorDir, repoName)
+	}
 	// If we're in vendoring mode and the vendorDir exists and has the right fingerprint, return immediately.
 	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fprint) {
 		return filepath.Abs(vendorDir)

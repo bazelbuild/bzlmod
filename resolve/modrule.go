@@ -9,7 +9,6 @@ import (
 	"github.com/bazelbuild/bzlmod/modrule"
 	"go.starlark.net/starlark"
 	"log"
-	"path/filepath"
 )
 
 func runModuleRules(ctx *context) error {
@@ -28,25 +27,10 @@ func runModuleRules(ctx *context) error {
 	}
 
 	// Fetch all modules whose rules are invoked.
-	repoPaths := make(map[string]string)
-	eval := modrule.NewEval(func(repo string) (string, error) {
-		path, ok := repoPaths[repo]
-		if ok {
-			return path, nil
-		}
-		var err error
-		repoPaths[repo], err = ctx.lfWorkspace.Fetch(repo)
-		return repoPaths[repo], err
-	})
+	eval := modrule.NewEval(ctx.lfWorkspace)
 	for key, tagsByRuleset := range tagsByKeyAndRuleset {
 		module := ctx.depGraph[key]
-		var err error
-		repoPaths[module.RepoName], err = ctx.lfWorkspace.Fetch(module.RepoName)
-		if err != nil {
-			return err
-		}
-		moduleExportsPath := filepath.Join(repoPaths[module.RepoName], filepath.FromSlash(module.ModuleRuleExports))
-		rulesets, err := eval.ExecForRulesets(key, moduleExportsPath)
+		rulesets, err := eval.ExecForRulesets(key, module.RepoName, module.ModuleRuleExports)
 		if err != nil {
 			return err
 		}
@@ -55,7 +39,7 @@ func runModuleRules(ctx *context) error {
 			if _, ok := rulesets[rulesetName]; ok {
 				continue
 			}
-			log.Printf("%v: module %v has no ruleset named %q\n", tags[0].Pos, key, rulesetName)
+			log.Printf("%v: module %v does not export a ruleset named %q\n", tags[0].Pos, key, rulesetName)
 			err = fmt.Errorf("undefined ruleset")
 		}
 		if err != nil {
@@ -80,10 +64,12 @@ func runModuleRules(ctx *context) error {
 					}
 				}
 				repo.Fetcher = fetch.Wrap(&fetch.ModRule{
-					ModuleKey:   key,
-					RulesetName: rulesetName,
-					RepoInfo:    starutil.ValueHolder{repoInfo},
-					Fprint:      "", // TODO
+					DefModuleKey:      key,
+					DefRepoName:       module.RepoName,
+					ModuleRuleExports: module.ModuleRuleExports,
+					RulesetName:       rulesetName,
+					RepoInfo:          starutil.ValueHolder{repoInfo},
+					Fprint:            "", // TODO
 				})
 				ctx.lfWorkspace.Repos[repoName] = repo
 			}
@@ -103,9 +89,11 @@ func callResolveFn(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName s
 	thread := &starlark.Thread{
 		Name: fmt.Sprintf("resolve_fn of %v in %v", ruleset.Name, ruleset.ModuleKey),
 	}
-	result, err := starlark.Call(thread, ruleset.ResolveFn, []starlark.Value{modrule.NewContext(topModule)}, nil)
+	ctx := modrule.NewResolveContext(topModule)
+	result, err := starlark.Call(thread, ruleset.ResolveFn, []starlark.Value{ctx}, nil)
 	if err != nil {
-		return nil, err // TODO: insert call frame info
+		log.Printf("%v: %v", thread.CallFrame(0).Pos, err)
+		return nil, fmt.Errorf("error running %v: %v", thread.Name, err)
 	}
 	rr, ok := result.(*modrule.ResolveResult)
 	if !ok {

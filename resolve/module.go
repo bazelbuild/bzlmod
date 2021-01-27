@@ -9,6 +9,9 @@ import (
 
 type Module struct {
 	// Fields from module()
+	// Key is the name and version declared by this module's module file. It should be noted that this could differ from
+	// the key of this module in the dep graph, which is used to refer to this module throughout resolution.
+	// Specifically, the latter could have an empty version when there's a non-registry override.
 	Key               common.ModuleKey
 	CompatLevel       int
 	BazelCompat       string
@@ -19,15 +22,15 @@ type Module struct {
 	// Deps come from bazel_dep(). The key type is the repo_name
 	Deps map[string]common.ModuleKey
 
-	// The registry that the module comes from. Can be nil if an override exists
+	// The registry that the module comes from. Can be nil if a non-registry override exists
 	Reg registry.Registry
-
-	// These are (potentially) filled post-selection
-	Fetcher  fetch.Fetcher // If an override exists, this can be filled during discovery
-	RepoName string
 
 	// Tags come from module rule invocations.
 	Tags []modrule.Tag
+
+	// The following are (potentially) filled post-selection
+	Fetcher  fetch.Fetcher // If a non-registry override exists, this is filled during discovery
+	RepoName string
 }
 
 func NewModule() *Module {

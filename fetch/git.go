@@ -9,7 +9,11 @@ type Git struct {
 	Patches []Patch
 }
 
-func (g *Git) Fetch(vendorDir string) (string, error) {
+func (g *Git) EarlyFetch() (string, error) {
+	return g.Fetch("", nil)
+}
+
+func (g *Git) Fetch(_ string, env *Env) (string, error) {
 	return "", fmt.Errorf("git fetch unimplemented")
 }
 

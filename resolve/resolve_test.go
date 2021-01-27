@@ -54,6 +54,7 @@ module(name="F", version="10.0")
 	if assert.NoError(t, err) {
 		const expectedLockFile = `{
   "VendorDir": "",
+  "RootRepoName": "A",
   "Repos": {
     "BfromA": {
       "Fetcher": {

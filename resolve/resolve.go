@@ -50,14 +50,13 @@ func fillModuleData(ctx *context) error {
 		module.RepoName = moduleKey.Name
 	}
 	rootModule := ctx.depGraph[common.ModuleKey{ctx.rootModuleName, ""}]
-	rootModule.RepoName = ""
 	for repoName, depKey := range rootModule.Deps {
 		ctx.depGraph[depKey].RepoName = repoName
 	}
 
 	// Grab the fetcher for modules whose fetcher hasn't been populated yet.
 	for moduleKey, module := range ctx.depGraph {
-		if module.RepoName == "" || module.Fetcher != nil {
+		if module.Fetcher != nil {
 			continue
 		}
 		var err error
@@ -75,9 +74,6 @@ func fillModuleData(ctx *context) error {
 
 	// Fill the lockfile workspace with repos that come from Bazel modules (i.e. bazel_deps).
 	for _, module := range ctx.depGraph {
-		if module.RepoName == "" {
-			continue
-		}
 		repo := lockfile.NewRepo()
 		repo.Fetcher = fetch.Wrap(module.Fetcher)
 		for repoName, depKey := range module.Deps {
@@ -131,7 +127,7 @@ func writeWorkspaceFile(wsDir string, ctx *context) error {
 
 	// Now fill the data struct.
 	for _, module := range ctx.depGraph {
-		if module.RepoName == "" {
+		if module.Key.Name == ctx.rootModuleName {
 			continue
 		}
 		repoDeps := make(map[string]string)

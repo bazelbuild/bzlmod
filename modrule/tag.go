@@ -110,5 +110,9 @@ type Tag struct {
 
 // Retrieves all the Tags of a module, after said module's MODULE.bazel file has been executed on the given thread.
 func GetTags(thread *starlark.Thread) []Tag {
-	return thread.Local(tagsKey).([]Tag)
+	tags := thread.Local(tagsKey)
+	if tags == nil {
+		return nil
+	}
+	return tags.([]Tag)
 }

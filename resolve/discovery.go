@@ -373,11 +373,14 @@ func runDiscovery(wsDir string, vendorDir string, registries []string) (*context
 		moduleBazelIntegrity: integrities.MustGenerate("sha256", moduleBazel),
 		lfWorkspace:          lockfile.NewWorkspace(),
 	}
+	ctx.lfWorkspace.RootRepoName = tstate.module.Key.Name
 	ctx.lfWorkspace.VendorDir = wsSettings.vendorDir
 	if _, exists := ctx.overrideSet[ctx.rootModuleName]; exists {
 		return nil, fmt.Errorf("invalid override found for root module")
 	}
+	// TODO: this override should simply be ".". We need to figure out how to make the working directory match
 	ctx.overrideSet[ctx.rootModuleName] = LocalPathOverride{Path: wsDir}
+	tstate.module.Fetcher = &fetch.LocalPath{Path: wsDir}
 
 	if err = processModuleDeps(tstate.module, ctx.overrideSet, ctx.depGraph, wsSettings.registries); err != nil {
 		return nil, err
@@ -450,7 +453,7 @@ type getModuleBazelResult struct {
 	moduleBazel []byte
 	// exactly one of fetcher and reg is nil.
 	reg     registry.Registry
-	fetcher fetch.Fetcher
+	fetcher fetch.EarlyFetcher
 }
 
 // getModuleBazel grabs the MODULE.bazel file for the given key, taking into account the appropriate override and the
@@ -479,12 +482,11 @@ func getModuleBazel(key common.ModuleKey, overrideSet OverrideSet, registries []
 				Patches: o.Patches,
 			}
 		}
-		// Fetch the contents of the module to get to the MODULE.bazel file. Note that we specify an empty vendorDir
-		// even if we're in vendoring mode: this is because this module might not end up being selected, in which case
-		// we don't want the module contents cluttering up the vendor directory. Plus, we don't know what the repo name
-		// of this module is!
+		// Fetch the contents of the module to get to the MODULE.bazel file. Note that we can only use early fetch here:
+		// we don't yet know whether this module will be selected, so we don't yet have a repo name, so no vendoring,
+		// no resolving labels, etc.
 		var path string
-		path, err = result.fetcher.Fetch("")
+		path, err = result.fetcher.EarlyFetch()
 		if err != nil {
 			err = fmt.Errorf("error fetching module %q with override: %v", key.Name, err)
 			return

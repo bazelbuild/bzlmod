@@ -1,6 +1,15 @@
 package fetch
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/bazelbuild/bzlmod/modrule"
+)
+
+type Env struct {
+	VendorDir     string
+	WsDir         string
+	LabelResolver modrule.LabelResolver
+}
 
 // Fetcher contains all the information needed to "fetch" a repo. "Fetch" here is simply defined as making the contents
 // of a repo available in a local directory through some means.
@@ -11,7 +20,7 @@ type Fetcher interface {
 	// calling it once. In other words, subsequent calls to Fetch should terminate as early as possible.
 	// If vendorDir is non-empty, we're operating in vendoring mode; Fetch should make the contents available under
 	// vendorDir if appropriate. Otherwise, Fetch is free to place the contents wherever.
-	Fetch(vendorDir string) (string, error)
+	Fetch(repoName string, env *Env) (string, error)
 
 	// Fingerprint returns a fingerprint of the fetched contents. When the fingerprint changes, it's a signal that the
 	// repo should be re-fetched. Note that the fingerprint need not necessarily be calculated from the actual bytes of
@@ -23,12 +32,23 @@ type Fetcher interface {
 	AppendPatches(patches []Patch) error
 }
 
+// EarlyFetcher is a Fetcher that can be fetched before all relevant information becomes available (for example, what
+// the vendor dir is, what other repos there are, etc). Fetchers that are more "simplistic" and can be used during
+// discovery should implement this.
+type EarlyFetcher interface {
+	Fetcher
+	// EarlyFetch is just like Fetch, except that it doesn't get any information about the vendor dir, or the repo name,
+	// etc.
+	EarlyFetch() (string, error)
+}
+
 // Wrapper wraps all known implementations of the Fetcher interface and acts as a multiplexer (only 1 member should be
 // non-nil). It's useful in JSON marshalling/unmarshalling.
 type Wrapper struct {
 	Archive   *Archive   `json:",omitempty"`
 	Git       *Git       `json:",omitempty"`
 	LocalPath *LocalPath `json:",omitempty"`
+	ModRule   *ModRule   `json:",omitempty"`
 }
 
 func Wrap(f Fetcher) Wrapper {
@@ -39,6 +59,8 @@ func Wrap(f Fetcher) Wrapper {
 		return Wrapper{Git: ft}
 	case *LocalPath:
 		return Wrapper{LocalPath: ft}
+	case *ModRule:
+		return Wrapper{ModRule: ft}
 	}
 	return Wrapper{}
 }
@@ -50,11 +72,14 @@ func (w Wrapper) Unwrap() Fetcher {
 	if w.Git != nil {
 		return w.Git
 	}
-	return w.LocalPath
+	if w.LocalPath != nil {
+		return w.LocalPath
+	}
+	return w.ModRule
 }
 
-func (w Wrapper) Fetch(vendorDir string) (string, error) {
-	return w.Unwrap().Fetch(vendorDir)
+func (w Wrapper) Fetch(repoName string, env *Env) (string, error) {
+	return w.Unwrap().Fetch(repoName, env)
 }
 
 func (w Wrapper) Fingerprint() string {
@@ -70,8 +95,9 @@ type LocalPath struct {
 	Path string
 }
 
-func (lp *LocalPath) Fetch(vendorDir string) (string, error) {
+func (lp *LocalPath) Fetch(_ string, _ *Env) (string, error) {
 	// Return the local path as-is, even in vendoring mode.
+	// TODO: filepath.Abs
 	return lp.Path, nil
 }
 
@@ -80,6 +106,10 @@ func (lp *LocalPath) Fingerprint() string {
 	return ""
 }
 
-func (lp *LocalPath) AppendPatches(patches []Patch) error {
+func (lp *LocalPath) AppendPatches(_ []Patch) error {
 	return fmt.Errorf("LocalPath fetcher does not support patches")
+}
+
+func (lp *LocalPath) EarlyFetch() (string, error) {
+	return lp.Fetch("", nil)
 }

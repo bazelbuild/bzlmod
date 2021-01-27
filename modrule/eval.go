@@ -261,13 +261,29 @@ type evalCacheEntry struct {
 	globals starlark.StringDict
 	err     error
 }
-type Eval struct {
-	cache       map[string]*evalCacheEntry
-	predeclared starlark.StringDict
-	repoPathFn  func(repo string) (string, error)
+
+type ResolveLabelResult struct {
+	Repo     string
+	Package  string
+	Filename string
 }
 
-func NewEval(repoPathFn func(repo string) (string, error)) *Eval {
+// LabelResolver tells Eval how to deal with load statements. Eval keeps track of the current repo and package name,
+// and when a load from a label is encountered, it asks LabelResolver for the repo, package, and filename of the file
+// that the label is pointing to.
+type LabelResolver interface {
+	ResolveLabel(curRepo string, curPackage string, label *common.Label) (*ResolveLabelResult, error)
+}
+
+// Eval is used to evaluate module rule exports. It has an internal cache, so it should be reused across multiple calls.
+type Eval struct {
+	cache         map[string]*evalCacheEntry
+	predeclared   starlark.StringDict
+	labelResolver LabelResolver
+}
+
+// NewEval creates a new Eval object with the given LabelResolver.
+func NewEval(labelResolver LabelResolver) *Eval {
 	return &Eval{
 		cache: make(map[string]*evalCacheEntry),
 		predeclared: starlark.StringDict{
@@ -278,51 +294,61 @@ func NewEval(repoPathFn func(repo string) (string, error)) *Eval {
 			"module_ruleset":        starlark.NewBuiltin("module_ruleset", moduleRulesetFn),
 			"module_ruleset_member": starlark.NewBuiltin("module_ruleset_member", moduleRulesetMemberFn),
 		},
-		repoPathFn: repoPathFn,
+		labelResolver: labelResolver,
 	}
 }
 
-func (e *Eval) exec(filename string) (starlark.StringDict, error) {
-	src, err := ioutil.ReadFile(filename)
+// `exec` executes the file named by `result`, assuming the current repo and package are given by `result`.
+func (e *Eval) exec(result *ResolveLabelResult) (starlark.StringDict, error) {
+	src, err := ioutil.ReadFile(result.Filename)
 	if err != nil {
 		return nil, err
 	}
 	thread := &starlark.Thread{
-		Name: "exec " + filename,
-		Load: func(t *starlark.Thread, label string) (starlark.StringDict, error) {
-			filename, err := e.resolveLabel(t, label)
+		Name: "exec " + result.Filename,
+		Load: func(t *starlark.Thread, rawLabel string) (starlark.StringDict, error) {
+			label, err := common.ParseLabel(rawLabel)
 			if err != nil {
 				return nil, err
 			}
-			return e.load(filename)
+			return e.load(result.Repo, result.Package, label)
 		},
 	}
-	return starlark.ExecFile(thread, filename, src, e.predeclared)
+	return starlark.ExecFile(thread, result.Filename, src, e.predeclared)
 }
 
-func (e *Eval) resolveLabel(t *starlark.Thread, label string) (string, error) {
-	// TODO
-	return "", nil
-}
-
-func (e *Eval) load(filename string) (starlark.StringDict, error) {
-	entry, ok := e.cache[filename]
+// Given the current repo and package, `load` loads and executes the file pointed to by the given label.
+func (e *Eval) load(curRepo string, curPackage string, label *common.Label) (starlark.StringDict, error) {
+	result, err := e.labelResolver.ResolveLabel(curRepo, curPackage, label)
+	if err != nil {
+		return nil, err
+	}
+	entry, ok := e.cache[result.Filename]
 	if entry == nil {
 		if ok {
 			return nil, fmt.Errorf("cycle in load graph")
 		}
-		e.cache[filename] = nil
-		globals, err := e.exec(filename)
+		e.cache[result.Filename] = nil
+		globals, err := e.exec(result)
 		entry = &evalCacheEntry{globals, err}
-		e.cache[filename] = entry
+		e.cache[result.Filename] = entry
 	}
 	return entry.globals, entry.err
 }
 
-// GetRulesets executes the Starlark code contained in src and returns a map of all the Ruleset objects defined in the
-// source.
-func (e *Eval) ExecForRulesets(key common.ModuleKey, filename string) (map[string]*Ruleset, error) {
-	globals, err := e.load(filename)
+// GetRulesets executes the "module rule exports" file of the module with the given key and "module_rule_exports"
+// parameter, and returns the Ruleset objects in the resulting globals.
+func (e *Eval) ExecForRulesets(key common.ModuleKey, repoName string, moduleRuleExports string) (map[string]*Ruleset, error) {
+	label, err := common.ParseLabel(moduleRuleExports)
+	if err != nil {
+		return nil, err
+	}
+	if label.HasRepo {
+		return nil, fmt.Errorf("module exports label must not specify a repo: %q", moduleRuleExports)
+	}
+
+	relLabel := &common.Label{HasRepo: false, HasPackage: false, Target: label.Target}
+	globals, err := e.load(repoName, label.Package, relLabel)
 	if err != nil {
 		return nil, err
 	}
