@@ -10,7 +10,12 @@ import (
 func Hash(s ...interface{}) string {
 	hash := sha1.New()
 	for _, i := range s {
-		_, _ = fmt.Fprintf(hash, "%v$", i)
+		if bs, ok := i.([]byte); ok {
+			_, _ = hash.Write(bs)
+			_, _ = fmt.Fprint(hash, '$')
+		} else {
+			_, _ = fmt.Fprint(hash, i, '$')
+		}
 	}
 	return base32.StdEncoding.EncodeToString(hash.Sum(nil))
 }

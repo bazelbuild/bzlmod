@@ -2,11 +2,14 @@ package fetch
 
 import (
 	"fmt"
+	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/modrule"
 )
 
 type Env struct {
-	VendorDir     string
+	// VendorDir should be an absolute filepath to the vendor directory.
+	VendorDir string
+	// WsDir should be an absolute filepath to the root of the workspace directory.
 	WsDir         string
 	LabelResolver modrule.LabelResolver
 }
@@ -39,7 +42,7 @@ type EarlyFetcher interface {
 	Fetcher
 	// EarlyFetch is just like Fetch, except that it doesn't get any information about the vendor dir, or the repo name,
 	// etc.
-	EarlyFetch() (string, error)
+	EarlyFetch(wsDir string) (string, error)
 }
 
 // Wrapper wraps all known implementations of the Fetcher interface and acts as a multiplexer (only 1 member should be
@@ -95,10 +98,9 @@ type LocalPath struct {
 	Path string
 }
 
-func (lp *LocalPath) Fetch(_ string, _ *Env) (string, error) {
+func (lp *LocalPath) Fetch(_ string, env *Env) (string, error) {
 	// Return the local path as-is, even in vendoring mode.
-	// TODO: filepath.Abs
-	return lp.Path, nil
+	return lp.EarlyFetch(env.WsDir)
 }
 
 func (lp *LocalPath) Fingerprint() string {
@@ -110,6 +112,6 @@ func (lp *LocalPath) AppendPatches(_ []Patch) error {
 	return fmt.Errorf("LocalPath fetcher does not support patches")
 }
 
-func (lp *LocalPath) EarlyFetch() (string, error) {
-	return lp.Fetch("", nil)
+func (lp *LocalPath) EarlyFetch(wsDir string) (string, error) {
+	return common.NormalizePath(wsDir, lp.Path), nil
 }

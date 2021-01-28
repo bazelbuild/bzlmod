@@ -6,17 +6,28 @@ import (
 )
 
 type Context struct {
+	// Resolve only
+
 	topModule *BazelModule
-	repoName  string
-	repoInfo  starlark.Value
+
+	// Fetch only
+
+	repoName string
+	repoInfo starlark.Value
+
+	// Shared
+
+	// An absolute filepath to the directory where all download, extract, template, etc paths are rooted.
+	// Not called "repoPath" because during resolution, there is no repo yet.
+	downloadRoot string
 }
 
 func NewResolveContext(topModule *BazelModule) Context {
 	return Context{topModule: topModule}
 }
 
-func NewFetchContext(repoName string, repoInfo starlark.Value) Context {
-	return Context{repoName: repoName, repoInfo: repoInfo}
+func NewFetchContext(repoName string, repoInfo starlark.Value, repoPath string) Context {
+	return Context{repoName: repoName, repoInfo: repoInfo, downloadRoot: repoPath}
 }
 
 func (c Context) String() string        { return "ModuleRuleContext" }
@@ -26,7 +37,7 @@ func (c Context) Truth() starlark.Bool  { return true }
 func (c Context) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: ModuleRuleContext") }
 
 func (c Context) Attr(name string) (starlark.Value, error) {
-	// TODO: execute, top_module, os?, repo_name, repo_info
+	// TODO: execute, top_module, os?, repo_name, repo_info, download[_and_extract]
 	panic("implement me")
 }
 

@@ -111,6 +111,7 @@ repo(
 {{end}}`
 
 func writeWorkspaceFile(wsDir string, ctx *context) error {
+	// TODO: make it so that all information needed to output the workspace file is contained in the lockfile.
 	type repoData struct {
 		Fingerprint string
 		Deps        map[string]string

@@ -36,19 +36,18 @@ func (a *Archive) AppendPatches(patches []Patch) error {
 	return nil
 }
 
-func (a *Archive) EarlyFetch() (string, error) {
+func (a *Archive) EarlyFetch(_ string) (string, error) {
 	return a.Fetch("", nil)
 }
 
 func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
-	vendorDir := ""
-	if env != nil {
-		// TODO: figure out whether env.VendorDir should be a filepath or a path.
-		vendorDir = filepath.Join(env.VendorDir, repoName)
+	vendorRepoDir := ""
+	if env != nil && env.VendorDir != "" {
+		vendorRepoDir = filepath.Join(env.VendorDir, repoName)
 	}
-	// If we're in vendoring mode and the vendorDir exists and has the right fingerprint, return immediately.
-	if vendorDir != "" && verifyFingerprintFile(vendorDir, a.Fprint) {
-		return filepath.Abs(vendorDir)
+	// If we're in vendoring mode and the vendorRepoDir exists and has the right fingerprint, return immediately.
+	if vendorRepoDir != "" && verifyFingerprintFile(vendorRepoDir, a.Fprint) {
+		return vendorRepoDir, nil
 	}
 
 	// Otherwise, check if the corresponding shared repo directory exists and has the right fingerprint (in which case
@@ -62,7 +61,7 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 	sharedRepoDirReady := verifyFingerprintFile(sharedRepoDir, a.Fprint)
 
 	// If we're not in vendoring mode, just prep the shared repo dir if it's not ready, and return that directory.
-	if vendorDir == "" {
+	if vendorRepoDir == "" {
 		if !sharedRepoDirReady {
 			if err := a.downloadExtractAndPatch(sharedRepoDir); err != nil {
 				return "", err
@@ -79,19 +78,19 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 	if sharedRepoDirReady {
 		// Copy the entire directory over. Note that the fingerprint file itself is explicitly not copied, so that we
 		// only write it in the end if the whole copy succeeded.
-		if err := copyDirWithoutFingerprintFile(sharedRepoDir, vendorDir); err != nil {
+		if err := copyDirWithoutFingerprintFile(sharedRepoDir, vendorRepoDir); err != nil {
 			return "", fmt.Errorf("error copying shared repo dir to vendor dir: %v", err)
 		}
 	} else {
-		if err := a.downloadExtractAndPatch(vendorDir); err != nil {
+		if err := a.downloadExtractAndPatch(vendorRepoDir); err != nil {
 			return "", err
 		}
 	}
 	// Write the fingerprint file.
-	if err := writeFingerprintFile(vendorDir, a.Fprint); err != nil {
+	if err := writeFingerprintFile(vendorRepoDir, a.Fprint); err != nil {
 		return "", fmt.Errorf("can't write fingerprint file: %v", err)
 	}
-	return filepath.Abs(vendorDir)
+	return vendorRepoDir, nil
 }
 
 func verifyFingerprintFile(dir string, fprint string) bool {

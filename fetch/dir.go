@@ -41,3 +41,12 @@ func HTTPCacheFilePath(url string) (string, error) {
 	}
 	return filepath.Join(bzlmodDir, "http_cache", common.Hash(url)), nil
 }
+
+// BzlmodWsDir returns the path to the workspace-specific directory for `wsDir`.
+func BzlmodWsDir(wsDir string) (string, error) {
+	bzlmodDir, err := BzlmodDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(bzlmodDir, "ws", common.Hash(wsDir)), nil
+}

@@ -1,6 +1,7 @@
 package lockfile
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
@@ -31,18 +32,33 @@ type Repo struct {
 	path string
 }
 
-func NewWorkspace() *Workspace {
-	// TODO: immediately init fetch env?
-	return &Workspace{Repos: make(map[string]*Repo)}
+func NewWorkspace(vendorDir string, wsDir string, rootRepoName string) *Workspace {
+	ws := &Workspace{
+		VendorDir:    vendorDir,
+		RootRepoName: rootRepoName,
+		Repos:        make(map[string]*Repo),
+	}
+	ws.initFetchEnv(wsDir)
+	return ws
+}
+
+func LoadWorkspace(wsDir string, payload []byte) (*Workspace, error) {
+	ws := &Workspace{}
+	err := json.Unmarshal(payload, &ws)
+	if err != nil {
+		return nil, err
+	}
+	ws.initFetchEnv(wsDir)
+	return ws, nil
 }
 
 func NewRepo() *Repo {
 	return &Repo{Deps: make(map[string]string)}
 }
 
-func (ws *Workspace) InitFetchEnv(wsDir string) {
+func (ws *Workspace) initFetchEnv(wsDir string) {
 	ws.fetchEnv = &fetch.Env{
-		VendorDir:     ws.VendorDir,
+		VendorDir:     common.NormalizePath(wsDir, ws.VendorDir),
 		WsDir:         wsDir,
 		LabelResolver: ws,
 	}

@@ -15,13 +15,11 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 )
 
 func init() {
@@ -35,7 +33,8 @@ If only 1 repo was requested to be fetched, the path is simply written out;
 otherwise, the output will be multiple lines, each in the format of
 "<repoName> <repoPath>" (without quotes).`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := runFetch(fetchAll, args); err != nil {
+			// TODO: figure out wsDir
+			if err := runFetch("wsDir", fetchAll, args); err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Error: %v", err)
 			}
 		},
@@ -45,27 +44,24 @@ otherwise, the output will be multiple lines, each in the format of
 	fetchCmd.Flags().BoolVar(&fetchAll, "all", false, `Fetch all known repos.`)
 }
 
-func runFetch(fetchAll bool, repos []string) error {
+func runFetch(wsDir string, fetchAll bool, repos []string) error {
 	p, err := ioutil.ReadFile(lockfile.FileName)
 	if err != nil {
 		return err
 	}
-	ws := lockfile.NewWorkspace()
-	err = json.Unmarshal(p, ws)
+	ws, err := lockfile.LoadWorkspace(wsDir, p)
 	if err != nil {
 		return err
 	}
 	if fetchAll {
-		for name, repo := range ws.Repos {
-			err = singleFetch(name, repo, ws, true)
+		for name := range ws.Repos {
+			if name != ws.RootRepoName {
+				err = singleFetch(name, ws, true)
+			}
 		}
 	} else {
 		for _, name := range repos {
-			repo := ws.Repos[name]
-			if repo == nil {
-				return fmt.Errorf("unknown repo: %v", name)
-			}
-			err = singleFetch(name, repo, ws, len(repos) > 1)
+			err = singleFetch(name, ws, len(repos) > 1)
 			if err != nil {
 				return err
 			}
@@ -74,19 +70,14 @@ func runFetch(fetchAll bool, repos []string) error {
 	return nil
 }
 
-func singleFetch(name string, repo *lockfile.Repo, ws *lockfile.Workspace, writeName bool) error {
-	vendorDir := ""
-	if ws.VendorDir != "" {
-		vendorDir = filepath.Join(ws.VendorDir, name)
-	}
-	path, err := repo.Fetcher.Fetch(vendorDir)
+func singleFetch(name string, ws *lockfile.Workspace, writeName bool) error {
+	path, err := ws.Fetch(name)
 	if err != nil {
-		return fmt.Errorf("error fetching repo %v: %v", name, err)
+		return err
 	}
 	if writeName {
-		fmt.Printf("%v %v\n", name, path)
-	} else {
-		fmt.Println(path)
+		fmt.Print(name)
 	}
+	fmt.Println(path)
 	return nil
 }

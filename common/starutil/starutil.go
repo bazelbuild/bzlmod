@@ -26,21 +26,29 @@ func ExtractStringSlice(list *starlark.List) ([]string, error) {
 // ValueHolder is a wrapper around a Starlark value that can be serialized and deserialized from/to JSON using Go's
 // json package.
 type ValueHolder struct {
-	Value starlark.Value
+	Value      starlark.Value
+	Serialized []byte
 }
 
-func (v *ValueHolder) MarshalJSON() ([]byte, error) {
+// NewValueHolder creates a new ValueHolder around the given Starlark value. Returns an error if the Starlark value
+// cannot be serialized.
+func NewValueHolder(v starlark.Value) (*ValueHolder, error) {
 	thread := starlark.Thread{Name: "marshaler"}
-	s, err := starlark.Call(&thread, starlarkjson.Module.Members["encode"], []starlark.Value{v.Value}, nil)
+	s, err := starlark.Call(&thread, starlarkjson.Module.Members["encode"], []starlark.Value{v}, nil)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(s.(starlark.String)), nil
+	return &ValueHolder{Value: v, Serialized: []byte(s.(starlark.String))}, nil
+}
+
+func (v *ValueHolder) MarshalJSON() ([]byte, error) {
+	return v.Serialized, nil
 }
 
 func (v *ValueHolder) UnmarshalJSON(bytes []byte) error {
 	thread := starlark.Thread{Name: "unmarshaler"}
 	var err error
 	v.Value, err = starlark.Call(&thread, starlarkjson.Module.Members["decode"], []starlark.Value{starlark.String(bytes)}, nil)
+	v.Serialized = bytes
 	return err
 }

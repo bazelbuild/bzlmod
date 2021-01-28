@@ -9,7 +9,7 @@ type Git struct {
 	Patches []Patch
 }
 
-func (g *Git) EarlyFetch() (string, error) {
+func (g *Git) EarlyFetch(_ string) (string, error) {
 	return g.Fetch("", nil)
 }
 
