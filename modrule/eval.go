@@ -5,6 +5,7 @@ import (
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/common/starutil"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkjson"
 	"go.starlark.net/starlarkstruct"
 	"io/ioutil"
 )
@@ -289,6 +290,7 @@ func NewEval(labelResolver LabelResolver) *Eval {
 		predeclared: starlark.StringDict{
 			"ResolveResult":         starlark.NewBuiltin("ResolveResult", resolveResultFn),
 			"attrs":                 attrModule,
+			"json":                  starlarkjson.Module,
 			"struct":                starlark.NewBuiltin("struct", starlarkstruct.Make),
 			"module_rule":           starlark.NewBuiltin("module_rule", moduleRuleFn),
 			"module_ruleset":        starlark.NewBuiltin("module_ruleset", moduleRulesetFn),

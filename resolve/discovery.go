@@ -171,7 +171,7 @@ func bazelDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kw
 		repoName = depKey.Name
 	}
 	getThreadState(t).bazelDeps[repoName] = depKey
-	return modrule.NewBazelDep(depKey), nil
+	return modrule.NewBazelDep(depKey), nil // TODO: might need to rewrite the tag, since this depKey is not necessarily what's eventually used.
 }
 
 func overrideDepFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

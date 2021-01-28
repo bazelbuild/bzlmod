@@ -8,6 +8,7 @@ import (
 
 func runSelection(ctx *context) error {
 	// TODO: take care of compatibility level and multiple version override
+
 	// `selected` keeps track of the latest version of each module.
 	// Note that the empty string is a "trump" version that wins over anything else (this indicates an override). It's
 	// stored as `nil` in `selected` since version.Version doesn't support an empty string.
