@@ -2,10 +2,11 @@ package fetch
 
 import (
 	"archive/zip"
+	"crypto/sha256"
 	"fmt"
 	integrities "github.com/bazelbuild/bzlmod/common/integrity"
+	"hash"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	urls "net/url"
@@ -46,7 +47,7 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 		vendorRepoDir = filepath.Join(env.VendorDir, repoName)
 	}
 	// If we're in vendoring mode and the vendorRepoDir exists and has the right fingerprint, return immediately.
-	if vendorRepoDir != "" && verifyFingerprintFile(vendorRepoDir, a.Fprint) {
+	if vendorRepoDir != "" && VerifyFingerprintFile(vendorRepoDir, a.Fprint) {
 		return vendorRepoDir, nil
 	}
 
@@ -58,7 +59,7 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sharedRepoDirReady := verifyFingerprintFile(sharedRepoDir, a.Fprint)
+	sharedRepoDirReady := VerifyFingerprintFile(sharedRepoDir, a.Fprint)
 
 	// If we're not in vendoring mode, just prep the shared repo dir if it's not ready, and return that directory.
 	if vendorRepoDir == "" {
@@ -66,7 +67,7 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 			if err := a.downloadExtractAndPatch(sharedRepoDir); err != nil {
 				return "", err
 			}
-			if err := writeFingerprintFile(sharedRepoDir, a.Fprint); err != nil {
+			if err := WriteFingerprintFile(sharedRepoDir, a.Fprint); err != nil {
 				return "", fmt.Errorf("can't write fingerprint file: %v", err)
 			}
 		}
@@ -87,73 +88,89 @@ func (a *Archive) Fetch(repoName string, env *Env) (string, error) {
 		}
 	}
 	// Write the fingerprint file.
-	if err := writeFingerprintFile(vendorRepoDir, a.Fprint); err != nil {
+	if err := WriteFingerprintFile(vendorRepoDir, a.Fprint); err != nil {
 		return "", fmt.Errorf("can't write fingerprint file: %v", err)
 	}
 	return vendorRepoDir, nil
 }
 
-func verifyFingerprintFile(dir string, fprint string) bool {
-	actualFprint, err := ioutil.ReadFile(filepath.Join(dir, "bzlmod.fingerprint"))
-	return err == nil && string(actualFprint) == fprint
-}
-
-func writeFingerprintFile(dir string, fprint string) error {
-	return ioutil.WriteFile(filepath.Join(dir, "bzlmod.fingerprint"), []byte(fprint), 0666)
-}
-
 func (a *Archive) downloadExtractAndPatch(destDir string) error {
-	integ, err := integrities.NewChecker(a.Integrity)
+	result, err := Download(a.URLs, a.Integrity)
 	if err != nil {
 		return err
 	}
+	if err := Extract(result.Filename, destDir, a.StripPrefix); err != nil {
+		return fmt.Errorf("error extracting archive downloaded from %v: %v", result.OrigURL, err)
+	}
+	for _, patch := range a.Patches {
+		if err := patch.Apply(destDir); err != nil {
+			return fmt.Errorf("error applying patch %v: %v", patch, err)
+		}
+	}
+	return nil
+}
 
-	archivePath := ""
-	rawurl := ""
-	for _, rawurl = range a.URLs {
-		url, err := urls.Parse(rawurl)
+type DownloadResult struct {
+	// Filename is the file path to the downloaded file (most likely residing in the bzlmod HTTP cache).
+	Filename string
+	// OrigURL is the URL from the original list that was actually successfully downloaded.
+	OrigURL string
+	// Sha256 is the SHA-256 checksum of the downloaded file.
+	Sha256 []byte
+}
+
+// Download tries to download the given urlList into the bzlmod HTTP cache, and returns the path to the downloaded file
+// (see DownloadResult). The first URL in the list to be successfully downloaded is used. The downloaded file must match
+// the given integrity. The URLs in the list can use the "file://" scheme, in which case Download doesn't perform an
+// HTTP get but just uses the file on local disk.
+func Download(urlList []string, integrity string) (result DownloadResult, err error) {
+	integ, err := integrities.NewChecker(integrity)
+	if err != nil {
+		return
+	}
+
+	sideHash := sha256.New()
+	for _, result.OrigURL = range urlList {
+		url, err := urls.Parse(result.OrigURL)
 		if err != nil {
 			log.Printf("failed to parse URL: %v\n", err)
 			continue
 		}
 		switch url.Scheme {
 		case "http", "https":
-			archivePath, err = cachedDownload(rawurl, integ)
+			result.Filename, err = cachedHTTPDownload(result.OrigURL, integ, sideHash)
 		case "file":
-			archivePath = filepath.FromSlash(url.Path)
-			err = verifyIntegrity(archivePath, integ)
+			result.Filename = filepath.FromSlash(url.Path)
+			err = verifyIntegrity(result.Filename, integ, sideHash)
 		default:
 			log.Printf("unrecognized scheme: %v\n", url.Scheme)
 			continue
 		}
 		if err == nil {
+			result.Sha256 = sideHash.Sum(nil)
 			break
 		}
-		log.Printf("error fetching from %v: %v\n", rawurl, err)
+		log.Printf("error fetching from %v: %v\n", result.OrigURL, err)
 	}
 
-	if archivePath == "" {
+	if result.OrigURL == "" {
 		// All our attempts to fetch from those URLs failed.
-		return fmt.Errorf("error downloading archive")
+		err = fmt.Errorf("error downloading archive")
+		return
 	}
-
-	// Now perform the extraction.
-	// TODO: support other archive formats
-	if err := extractZipFile(archivePath, destDir, a.StripPrefix); err != nil {
-		return fmt.Errorf("error extracting archive downloaded from %v: %v", rawurl, err)
-	}
-	// TODO: patch
-	return nil
+	return
 }
 
-// Downloads the given URL into the central cache location and returns the file path.
-func cachedDownload(url string, integ integrities.Checker) (string, error) {
+// CachedHTTPDownlaod downloads the given URL into bzlmod's HTTP cache and returns the file path. If a file
+// corresponding to the URL already exists in the cache and passes the integrity check, no actual download is performed.
+// If the downloaded file does not pass the integrity check, an error is returned.
+func cachedHTTPDownload(url string, integ integrities.Checker, sideHash hash.Hash) (string, error) {
 	fp, err := HTTPCacheFilePath(url)
 	if err != nil {
 		return "", err
 	}
 	// TODO: deal with concurrent access. What if another `bzlmod fetch` is executed at the same time?
-	if verifyIntegrity(fp, integ) == nil {
+	if verifyIntegrity(fp, integ, sideHash) == nil {
 		// This file exists in the cache and matches the specified integrity. Return its path immediately.
 		return fp, nil
 	}
@@ -175,7 +192,8 @@ func cachedDownload(url string, integ integrities.Checker) (string, error) {
 		return "", fmt.Errorf("got status: %v", resp.Status)
 	}
 	integ.Reset()
-	if _, err := io.Copy(io.MultiWriter(f, integ), resp.Body); err != nil {
+	sideHash.Reset()
+	if _, err := io.Copy(io.MultiWriter(f, integ, sideHash), resp.Body); err != nil {
 		return "", err
 	}
 	if !integ.Check() {
@@ -185,13 +203,14 @@ func cachedDownload(url string, integ integrities.Checker) (string, error) {
 }
 
 // Verifies the integrity of the file at path `fp` against the given integrity checker.
-func verifyIntegrity(fp string, integ integrities.Checker) error {
+func verifyIntegrity(fp string, integ integrities.Checker, sideHash hash.Hash) error {
 	f, err := os.Open(fp)
 	if err != nil {
 		return err
 	}
 	integ.Reset()
-	_, err = io.Copy(integ, f)
+	sideHash.Reset()
+	_, err = io.Copy(io.MultiWriter(integ, sideHash), f)
 	if err != nil {
 		return err
 	}
@@ -203,6 +222,19 @@ func verifyIntegrity(fp string, integ integrities.Checker) error {
 		return fmt.Errorf("failed integrity check")
 	}
 	return nil
+}
+
+// Extract extracts the given archive file (archivePath) to destDir. It chooses the decompression algorithm based on the
+// extension of the file name.
+func Extract(archivePath string, destDir string, stripPrefix string) error {
+	// TODO: support other archive formats
+	ext := filepath.Ext(archivePath)
+	switch ext {
+	case ".zip":
+		return extractZipFile(archivePath, destDir, stripPrefix)
+	default:
+		return fmt.Errorf("unsupported archive extension: %v", ext)
+	}
 }
 
 func extractZipFile(archivePath string, destDir string, stripPrefix string) error {
@@ -222,7 +254,7 @@ func extractZipFile(archivePath string, destDir string, stripPrefix string) erro
 		defer fr.Close()
 		relPath := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(f.Name, stripPrefix)))
 		absPath := filepath.Join(destDir, relPath)
-		if err := os.MkdirAll(filepath.Dir(absPath), 0777); err != nil {
+		if err := os.MkdirAll(filepath.Dir(absPath), 0775); err != nil {
 			return fmt.Errorf("can't create directories for %v: %v", absPath, err)
 		}
 		w, err := os.Create(absPath)
@@ -263,7 +295,7 @@ func copyDirWithoutFingerprintFile(from string, to string) error {
 		}
 		defer r.Close()
 		topath := filepath.Join(to, relpath)
-		err = os.MkdirAll(filepath.Dir(topath), 0777)
+		err = os.MkdirAll(filepath.Dir(topath), 0775)
 		if err != nil {
 			return err
 		}

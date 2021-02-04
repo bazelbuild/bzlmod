@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
-	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/lockfile"
 	"html/template"
 	"io/ioutil"
@@ -75,7 +74,7 @@ func fillModuleData(ctx *context) error {
 	// Fill the lockfile workspace with repos that come from Bazel modules (i.e. bazel_deps).
 	for _, module := range ctx.depGraph {
 		repo := lockfile.NewRepo()
-		repo.Fetcher = fetch.Wrap(module.Fetcher)
+		repo.Fetcher = lockfile.WrapFetcher(module.Fetcher)
 		for repoName, depKey := range module.Deps {
 			repo.Deps[repoName] = ctx.depGraph[depKey].RepoName
 		}

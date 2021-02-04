@@ -148,3 +148,8 @@ func MustGenerate(algorithm string, bytes []byte) string {
 	}
 	return s
 }
+
+// GenerateFromSha256 generates a Subresource Integrity metadata from the given SHA-256 checksum.
+func GenerateFromSha256(sha256checksum []byte) string {
+	return "sha256-" + base64.StdEncoding.EncodeToString(sha256checksum)
+}

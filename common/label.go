@@ -27,6 +27,20 @@ type Label struct {
 	Target string
 }
 
+func (l *Label) String() string {
+	var s string
+	if l.HasRepo {
+		s = "@" + l.Repo
+	}
+	if l.HasPackage {
+		s += "//" + l.Package
+		if strings.HasSuffix(l.Package, "/"+l.Target) {
+			return s
+		}
+	}
+	return s + ":" + l.Target
+}
+
 // submatch indices:        0 12 3            4              5
 var re = regexp.MustCompile(`^((@([^/\\]*))?//([^:\\]*))?(?::([^:\\]+))?$`)
 
@@ -92,4 +106,16 @@ func ParseLabel(raw string) (*Label, error) {
 		}
 	}
 	return label, nil
+}
+
+type ResolveLabelResult struct {
+	Repo     string
+	Package  string
+	Filename string
+}
+
+// LabelResolver knows how to resolve a Label to a file path. Given the current repo, the current package, and a Label,
+// LabelResolver returns the repo, package, and file path that the Label points to.
+type LabelResolver interface {
+	ResolveLabel(curRepo string, curPackage string, label *Label) (*ResolveLabelResult, error)
 }

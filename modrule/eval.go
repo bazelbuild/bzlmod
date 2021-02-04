@@ -38,54 +38,28 @@ type Rule struct {
 	Ruleset *Ruleset
 }
 
-func (r *Rule) NewInstance(kwargs []starlark.Tuple) (*RuleInstance, error) {
-	inst, err := InstantiateAttrs(r.Attrs, kwargs)
-	if err != nil {
-		return nil, err
-	}
-	return &RuleInstance{
-		Rule:  r,
-		Attrs: inst,
-	}, nil
-}
-
 func (r *Rule) String() string        { return fmt.Sprintf("module_rule(%v)", r.Name) }
 func (r *Rule) Type() string          { return "module_rule" }
 func (r *Rule) Freeze()               {}
 func (r *Rule) Truth() starlark.Bool  { return true }
 func (r *Rule) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: module_rule") }
 
-type RuleInstance struct {
-	Rule  *Rule
-	Attrs map[string]starlark.Value
-}
+// Label is a Starlark object which simply wraps a common.Label.
+type Label common.Label
 
-func (ri *RuleInstance) String() string        { return "RuleInstance[...]" }
-func (ri *RuleInstance) Type() string          { return "RuleInstance" }
-func (ri *RuleInstance) Truth() starlark.Bool  { return true }
-func (ri *RuleInstance) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable: RuleInstance") }
+func (l *Label) String() string        { return (*common.Label)(l).String() }
+func (l *Label) Type() string          { return "Label" }
+func (l *Label) Freeze()               {}
+func (l *Label) Truth() starlark.Bool  { return true }
+func (l *Label) Hash() (uint32, error) { return starlark.String("Label|" + l.String()).Hash() }
 
-func (ri *RuleInstance) Freeze() {
-	for _, attr := range ri.Attrs {
-		attr.Freeze()
-	}
-}
+// TODO: Label has some methods/properties. But they're most likely not used in repo rules. Let's hold off implementing
+// those for now.
 
-func (ri *RuleInstance) Attr(name string) (starlark.Value, error) {
-	return ri.Attrs[name], nil
-}
-
-func (ri *RuleInstance) AttrNames() []string {
-	keys := make([]string, len(ri.Attrs))
-	i := 0
-	for key := range ri.Attrs {
-		keys[i] = key
-		i++
-	}
-	return keys
-}
-
+// ResolveResult is the Starlark object that should be returned by a module rule's resolve_fn.
 type ResolveResult struct {
+	// Repos indicates the list of repos this module ruleset generates. The key is the name of the repo, and the value
+	// is an arbitrary serializable Starlark value that will be later passed to the fetch_fn when this repo is fetched.
 	Repos         map[string]starlark.Value
 	Toolchains    []string
 	ExecPlatforms []string
@@ -258,39 +232,40 @@ func moduleRulesetMemberFn(t *starlark.Thread, b *starlark.Builtin, args starlar
 	return rule, nil
 }
 
+func labelFn(t *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var s string
+	err := starlark.UnpackPositionalArgs(b.Name(), args, kwargs, 0, &s)
+	if err != nil {
+		return nil, err
+	}
+	l, err := common.ParseLabel(s)
+	if err != nil {
+		return nil, err
+	}
+	return (*Label)(l), nil
+}
+
 type evalCacheEntry struct {
 	globals starlark.StringDict
 	err     error
-}
-
-type ResolveLabelResult struct {
-	Repo     string
-	Package  string
-	Filename string
-}
-
-// LabelResolver tells Eval how to deal with load statements. Eval keeps track of the current repo and package name,
-// and when a load from a label is encountered, it asks LabelResolver for the repo, package, and filename of the file
-// that the label is pointing to.
-type LabelResolver interface {
-	ResolveLabel(curRepo string, curPackage string, label *common.Label) (*ResolveLabelResult, error)
 }
 
 // Eval is used to evaluate module rule exports. It has an internal cache, so it should be reused across multiple calls.
 type Eval struct {
 	cache         map[string]*evalCacheEntry
 	predeclared   starlark.StringDict
-	labelResolver LabelResolver
+	labelResolver common.LabelResolver
 }
 
 // NewEval creates a new Eval object with the given LabelResolver.
-func NewEval(labelResolver LabelResolver) *Eval {
+func NewEval(labelResolver common.LabelResolver) *Eval {
 	return &Eval{
 		cache: make(map[string]*evalCacheEntry),
 		predeclared: starlark.StringDict{
 			"ResolveResult":         starlark.NewBuiltin("ResolveResult", resolveResultFn),
 			"attrs":                 attrModule,
 			"json":                  starlarkjson.Module,
+			"Label":                 starlark.NewBuiltin("Label", labelFn),
 			"struct":                starlark.NewBuiltin("struct", starlarkstruct.Make),
 			"module_rule":           starlark.NewBuiltin("module_rule", moduleRuleFn),
 			"module_ruleset":        starlark.NewBuiltin("module_ruleset", moduleRulesetFn),
@@ -301,7 +276,7 @@ func NewEval(labelResolver LabelResolver) *Eval {
 }
 
 // `exec` executes the file named by `result`, assuming the current repo and package are given by `result`.
-func (e *Eval) exec(result *ResolveLabelResult) (starlark.StringDict, error) {
+func (e *Eval) exec(result *common.ResolveLabelResult) (starlark.StringDict, error) {
 	src, err := ioutil.ReadFile(result.Filename)
 	if err != nil {
 		return nil, err

@@ -8,12 +8,10 @@ import (
 	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/bazelbuild/bzlmod/modrule"
+	"github.com/bazelbuild/bzlmod/registry"
+	"go.starlark.net/starlark"
 	"io/ioutil"
 	"path/filepath"
-
-	"github.com/bazelbuild/bzlmod/registry"
-
-	"go.starlark.net/starlark"
 )
 
 type wsSettings struct {

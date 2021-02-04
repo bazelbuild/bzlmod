@@ -33,6 +33,7 @@ func runSelection(ctx *context) error {
 
 	// Now go over the depGraph and rewrite deps to point to the selected version. Non-selected versions are removed
 	// from the graph.
+	// TODO: Also need to rewrite module rule tags
 	for key, module := range ctx.depGraph {
 		v, exists := selected[key.Name]
 		if !exists {

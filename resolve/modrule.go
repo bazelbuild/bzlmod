@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/common/starutil"
-	"github.com/bazelbuild/bzlmod/fetch"
 	"github.com/bazelbuild/bzlmod/lockfile"
 	"github.com/bazelbuild/bzlmod/modrule"
 	"go.starlark.net/starlark"
@@ -100,7 +99,7 @@ func runModuleRules(ctx *context) error {
 					repo.Deps[depRepoName] = depRepoName
 				}
 			}
-			repo.Fetcher = fetch.Wrap(&fetch.ModRule{
+			repo.Fetcher = lockfile.WrapFetcher(&modrule.Fetcher{
 				DefModuleKey:      key,
 				DefRepoName:       module.RepoName,
 				ModuleRuleExports: module.ModuleRuleExports,
@@ -174,7 +173,7 @@ func buildTopModule(ruleset *modrule.Ruleset, depGraph DepGraph, rootModuleName 
 				log.Printf("%v: ruleset %v in module %v has no member rule named %q\n", tag.Pos, tag.RulesetName, tag.ModuleKey, tag.RuleName)
 				return nil, fmt.Errorf("undefined rule")
 			}
-			ruleInstance, err := rule.NewInstance(tag.Kwargs)
+			ruleInstance, err := modrule.NewRuleInstance(rule, tag.Kwargs)
 			if err != nil {
 				log.Printf("%v: %v", tag.Pos, err)
 				return nil, fmt.Errorf("error creating rule instance")

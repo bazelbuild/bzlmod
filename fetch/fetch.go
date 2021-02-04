@@ -3,7 +3,6 @@ package fetch
 import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
-	"github.com/bazelbuild/bzlmod/modrule"
 )
 
 type Env struct {
@@ -11,7 +10,7 @@ type Env struct {
 	VendorDir string
 	// WsDir should be an absolute filepath to the root of the workspace directory.
 	WsDir         string
-	LabelResolver modrule.LabelResolver
+	LabelResolver common.LabelResolver
 }
 
 // Fetcher contains all the information needed to "fetch" a repo. "Fetch" here is simply defined as making the contents
@@ -43,54 +42,6 @@ type EarlyFetcher interface {
 	// EarlyFetch is just like Fetch, except that it doesn't get any information about the vendor dir, or the repo name,
 	// etc.
 	EarlyFetch(wsDir string) (string, error)
-}
-
-// Wrapper wraps all known implementations of the Fetcher interface and acts as a multiplexer (only 1 member should be
-// non-nil). It's useful in JSON marshalling/unmarshalling.
-type Wrapper struct {
-	Archive   *Archive   `json:",omitempty"`
-	Git       *Git       `json:",omitempty"`
-	LocalPath *LocalPath `json:",omitempty"`
-	ModRule   *ModRule   `json:",omitempty"`
-}
-
-func Wrap(f Fetcher) Wrapper {
-	switch ft := f.(type) {
-	case *Archive:
-		return Wrapper{Archive: ft}
-	case *Git:
-		return Wrapper{Git: ft}
-	case *LocalPath:
-		return Wrapper{LocalPath: ft}
-	case *ModRule:
-		return Wrapper{ModRule: ft}
-	}
-	return Wrapper{}
-}
-
-func (w Wrapper) Unwrap() Fetcher {
-	if w.Archive != nil {
-		return w.Archive
-	}
-	if w.Git != nil {
-		return w.Git
-	}
-	if w.LocalPath != nil {
-		return w.LocalPath
-	}
-	return w.ModRule
-}
-
-func (w Wrapper) Fetch(repoName string, env *Env) (string, error) {
-	return w.Unwrap().Fetch(repoName, env)
-}
-
-func (w Wrapper) Fingerprint() string {
-	return w.Unwrap().Fingerprint()
-}
-
-func (w Wrapper) AppendPatches(patches []Patch) error {
-	return w.Unwrap().AppendPatches(patches)
 }
 
 // LocalPath represents a locally available unpacked directory.

@@ -1,17 +1,17 @@
-package fetch
+package modrule
 
 import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/common/starutil"
-	"github.com/bazelbuild/bzlmod/modrule"
+	"github.com/bazelbuild/bzlmod/fetch"
 	"go.starlark.net/starlark"
 	"log"
 	"path/filepath"
 )
 
-// ModRule represents a repo to be fetched by running the fetch_fn of a module rule.
-type ModRule struct {
+// Fetcher represents a repo to be fetched by running the fetch_fn of a module rule.
+type Fetcher struct {
 	// DefModuleKey is the key of the module that defined the module rule.
 	DefModuleKey common.ModuleKey
 	// DefRepoName is the repo name of the module that defined the module rule.
@@ -29,11 +29,11 @@ type ModRule struct {
 	Fprint string
 }
 
-func (m *ModRule) Fetch(repoName string, env *Env) (string, error) {
+func (m *Fetcher) Fetch(repoName string, env *fetch.Env) (string, error) {
 	// Compute where the repo should be placed.
 	var repoPath string
 	if env.VendorDir == "" || m.MachineSpecific {
-		bzlmodWsDir, err := BzlmodWsDir(env.WsDir)
+		bzlmodWsDir, err := fetch.BzlmodWsDir(env.WsDir)
 		if err != nil {
 			return "", err
 		}
@@ -43,12 +43,12 @@ func (m *ModRule) Fetch(repoName string, env *Env) (string, error) {
 	}
 
 	// If the dir at repoPath already exists and has the right fingerprint, our job is done here.
-	if verifyFingerprintFile(repoPath, m.Fprint) {
+	if fetch.VerifyFingerprintFile(repoPath, m.Fprint) {
 		return repoPath, nil
 	}
 
 	// Call the fetch function.
-	eval := modrule.NewEval(env.LabelResolver)
+	eval := NewEval(env.LabelResolver)
 	rulesets, err := eval.ExecForRulesets(m.DefModuleKey, m.DefRepoName, m.ModuleRuleExports)
 	if err != nil {
 		return "", err
@@ -58,9 +58,9 @@ func (m *ModRule) Fetch(repoName string, env *Env) (string, error) {
 		return "", fmt.Errorf("module %v does not export a ruleset named %q", m.DefModuleKey, m.RulesetName)
 	}
 	thread := &starlark.Thread{
-		Name: fmt.Sprintf("fetch_fn of %v in %v", ruleset.Name, ruleset.ModuleKey),
+		Name: fmt.Sprintf("fetch repo %q (ruleset %v in %v)", repoName, ruleset.Name, ruleset.ModuleKey),
 	}
-	ctx := modrule.NewFetchContext(repoName, m.RepoInfo.Value, repoPath)
+	ctx := NewFetchContext(repoName, m.RepoInfo.Value, repoPath)
 	_, err = starlark.Call(thread, ruleset.FetchFn, []starlark.Value{ctx}, nil)
 	if err != nil {
 		log.Printf("%v: %v", thread.CallFrame(0).Pos, err)
@@ -68,16 +68,16 @@ func (m *ModRule) Fetch(repoName string, env *Env) (string, error) {
 	}
 
 	// Now record the fingerprint and return.
-	if err = writeFingerprintFile(repoPath, m.Fprint); err != nil {
+	if err = fetch.WriteFingerprintFile(repoPath, m.Fprint); err != nil {
 		return "", fmt.Errorf("failed to write fingerprint file: %v", err)
 	}
 	return repoPath, nil
 }
 
-func (m *ModRule) Fingerprint() string {
+func (m *Fetcher) Fingerprint() string {
 	return m.Fprint
 }
 
-func (m *ModRule) AppendPatches(_ []Patch) error {
+func (m *Fetcher) AppendPatches(_ []fetch.Patch) error {
 	return fmt.Errorf("ModRule fetcher does not support patches")
 }

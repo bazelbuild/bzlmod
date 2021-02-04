@@ -14,6 +14,7 @@ import (
 //   }
 var TestBzlmodDir = ""
 
+// BzlmodDir returns the path to the bzlmod cache directory.
 func BzlmodDir() (string, error) {
 	if TestBzlmodDir != "" {
 		return TestBzlmodDir, nil
@@ -34,6 +35,7 @@ func SharedRepoDir(hash string) (string, error) {
 	return filepath.Join(bzlmodDir, "shared_repos", hash), nil
 }
 
+// HTTPCacheFilePath returns the path to the file inside bzlmod's HTTP cache that corresponds to the given url.
 func HTTPCacheFilePath(url string) (string, error) {
 	bzlmodDir, err := BzlmodDir()
 	if err != nil {
@@ -42,7 +44,7 @@ func HTTPCacheFilePath(url string) (string, error) {
 	return filepath.Join(bzlmodDir, "http_cache", common.Hash(url)), nil
 }
 
-// BzlmodWsDir returns the path to the workspace-specific directory for `wsDir`.
+// BzlmodWsDir returns the path to the workspace-specific bzlmod cache directory for `wsDir`.
 func BzlmodWsDir(wsDir string) (string, error) {
 	bzlmodDir, err := BzlmodDir()
 	if err != nil {

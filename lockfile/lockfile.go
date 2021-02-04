@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/bazelbuild/bzlmod/common"
 	"github.com/bazelbuild/bzlmod/fetch"
-	"github.com/bazelbuild/bzlmod/modrule"
 	"path/filepath"
 )
 
@@ -23,7 +22,7 @@ type Workspace struct {
 }
 
 type Repo struct {
-	Fetcher fetch.Wrapper
+	Fetcher FetcherWrapper
 	Deps    map[string]string
 
 	// Importantly, the path is *not* serialized. Normally one needs to fetch a repo to know its path. But during the
@@ -81,8 +80,8 @@ func (ws *Workspace) Fetch(repoName string) (string, error) {
 	return repo.path, nil
 }
 
-func (ws *Workspace) ResolveLabel(curRepo string, curPackage string, label *common.Label) (*modrule.ResolveLabelResult, error) {
-	result := &modrule.ResolveLabelResult{}
+func (ws *Workspace) ResolveLabel(curRepo string, curPackage string, label *common.Label) (*common.ResolveLabelResult, error) {
+	result := &common.ResolveLabelResult{}
 	if !label.HasRepo {
 		// Stay in the same repo.
 		result.Repo = curRepo
